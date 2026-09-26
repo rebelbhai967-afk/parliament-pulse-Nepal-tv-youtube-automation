@@ -7,65 +7,129 @@ import requests
 from bs4 import BeautifulSoup
 
 
-BASE_URL = "https://na.parliament.gov.np"
-
-
-def discover_videos(output_path: str):
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-
-    archive_url = f"{BASE_URL}/np/videos"
-
-    print(f"Checking: {archive_url}")
-
+def get_video_source(video_page_url: str):
     response = requests.get(
-        archive_url,
+        video_page_url,
         timeout=30,
-        headers={"User-Agent": "Mozilla/5.0"}
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        }
     )
+
     response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    soup = BeautifulSoup(
+        response.text,
+        "html.parser"
+    )
 
-    videos = []
-    seen = set()
+    # HTML5 video/source
+    video = soup.find("video")
 
-    for link in soup.find_all("a", href=True):
-        href = link["href"]
-        title = link.get_text(" ", strip=True)
+    if video:
+        if video.get("src"):
+            return urljoin(
+                video_page_url,
+                video["src"]
+            )
 
-        if "/np/video/" in href or "/en/video/" in href:
-            video_url = urljoin(BASE_URL, href)
+        source = video.find("source")
 
-            if video_url not in seen:
-                seen.add(video_url)
+        if source and source.get("src"):
+            return urljoin(
+                video_page_url,
+                source["src"]
+            )
 
-                videos.append({
-                    "title": title,
-                    "url": video_url
-                })
+    # Fallback: search source tags
+    source = soup.find(
+        "source",
+        src=True
+    )
 
-    with open(
-        output,
-        "w",
-        encoding="utf-8"
-    ) as file:
-        json.dump(
-            videos,
-            file,
-            ensure_ascii=False,
-            indent=2
+    if source:
+        return urljoin(
+            video_page_url,
+            source["src"]
         )
 
-    print(f"Found {len(videos)} videos")
-    print(f"Saved to: {output}")
+    return None
+
+
+def download_video(
+    video_page_url: str,
+    output_dir: str
+):
+    output = Path(output_dir)
+    output.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    print(
+        f"Opening video page: {video_page_url}"
+    )
+
+    video_url = get_video_source(
+        video_page_url
+    )
+
+    if not video_url:
+        raise RuntimeError(
+            "Could not find the actual video "
+            "source on the Parliament page."
+        )
+
+    print(
+        f"Video source found: {video_url}"
+    )
+
+    response = requests.get(
+        video_url,
+        stream=True,
+        timeout=60,
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        }
+    )
+
+    response.raise_for_status()
+
+    filename = video_url.split("/")[-1].split("?")[0]
+
+    if not filename:
+        filename = "parliament_video.mp4"
+
+    output_file = output / filename
+
+    with open(
+        output_file,
+        "wb"
+    ) as file:
+
+        for chunk in response.iter_content(
+            chunk_size=1024 * 1024
+        ):
+            if chunk:
+                file.write(chunk)
+
+    print(
+        f"Video saved to: {output_file}"
+    )
+
+    return str(output_file)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+
+    if len(sys.argv) != 3:
         print(
-            "Usage: python discover.py <output_json>"
+            "Usage: python download.py "
+            "<video_page_url> <output_directory>"
         )
         sys.exit(1)
 
-    discover_videos(sys.argv[1])
+    download_video(
+        sys.argv[1],
+        sys.argv[2]
+    )
