@@ -1,25 +1,64 @@
-name: Parliament Pulse Nepal Automation
-
-on:
-  workflow_dispatch:
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
+      - name: Test video source detection
         run: |
-          pip install -r requirements.txt
+          python - <<'PY'
+          import json
 
-      - name: Test discovery
-        run: |
-          python src/discover.py data/videos.json
+          from src.download import (
+              get_session,
+              get_video_pages,
+              get_video_source
+          )
+
+          with open(
+              "data/videos.json",
+              "r",
+              encoding="utf-8"
+          ) as file:
+              collections = json.load(file)
+
+          if not collections:
+              raise RuntimeError(
+                  "No Parliament video collections found."
+              )
+
+          collection = collections[0]
+
+          print("Testing collection:")
+          print(collection["title"])
+          print(collection["url"])
+
+          session = get_session()
+
+          videos = get_video_pages(
+              collection["url"],
+              session
+          )
+
+          print(
+              f"Found {len(videos)} individual videos"
+          )
+
+          if not videos:
+              raise RuntimeError(
+                  "Collection found, but "
+                  "no individual videos detected."
+              )
+
+          for video in videos[:3]:
+
+              print()
+              print("Video:")
+              print(video["title"])
+              print(video["url"])
+
+              source = get_video_source(
+                  video["url"],
+                  session
+              )
+
+              if source:
+                  print("SOURCE FOUND:")
+                  print(source)
+              else:
+                  print("SOURCE NOT FOUND")
+          PY
