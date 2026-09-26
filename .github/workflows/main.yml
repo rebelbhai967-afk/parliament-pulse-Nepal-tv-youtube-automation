@@ -27,167 +27,104 @@ jobs:
 
       - name: Test individual Parliament video detection
         run: |
-          python - <<'PY'
+          python -c "
           import json
+          from src.download import get_session, get_video_pages, get_video_source
 
-          from src.download import (
-              get_session,
-              get_video_pages,
-              get_video_source
-          )
-
-          with open(
-              "data/videos.json",
-              "r",
-              encoding="utf-8"
-          ) as file:
+          with open('data/videos.json', 'r', encoding='utf-8') as file:
               collections = json.load(file)
 
           if not collections:
-              raise RuntimeError(
-                  "No Parliament collections found."
-              )
+              raise RuntimeError('No Parliament collections found.')
 
           session = get_session()
-
           collection = collections[0]
 
-          print("Testing collection:")
-          print(collection["url"])
+          print('Testing collection:')
+          print(collection['url'])
 
-          videos = get_video_pages(
-              collection["url"],
-              session
-          )
+          videos = get_video_pages(collection['url'], session)
 
-          print(
-              f"Found {len(videos)} individual videos"
-          )
+          print(f'Found {len(videos)} individual videos')
 
           if not videos:
-              raise RuntimeError(
-                  "No individual videos found."
-              )
+              raise RuntimeError('No individual videos found.')
 
           for video in videos:
-              print("")
-              print("Video:")
-              print(video["url"])
+              print('')
+              print('Video:')
+              print(video['url'])
 
-              source = get_video_source(
-                  video["url"],
-                  session
-              )
+              source = get_video_source(video['url'], session)
 
               if source:
-                  print("SOURCE FOUND:")
+                  print('SOURCE FOUND:')
                   print(source)
               else:
-                  print("SOURCE NOT FOUND")
-
-          PY
+                  print('SOURCE NOT FOUND')
+          "
 
       - name: Test actual video download
         run: |
-          python - <<'PY'
+          python -c "
           import json
           from pathlib import Path
+          from src.download import get_session, get_video_pages, get_video_source, download_file
 
-          from src.download import (
-              get_session,
-              get_video_pages,
-              get_video_source,
-              download_file
-          )
-
-          with open(
-              "data/videos.json",
-              "r",
-              encoding="utf-8"
-          ) as file:
+          with open('data/videos.json', 'r', encoding='utf-8') as file:
               collections = json.load(file)
 
           if not collections:
-              raise RuntimeError(
-                  "No Parliament collections found."
-              )
+              raise RuntimeError('No Parliament collections found.')
 
           session = get_session()
-
           collection = collections[0]
 
-          print("Downloading from collection:")
-          print(collection["url"])
+          print('Downloading from collection:')
+          print(collection['url'])
 
-          videos = get_video_pages(
-              collection["url"],
-              session
-          )
+          videos = get_video_pages(collection['url'], session)
 
           if not videos:
-              raise RuntimeError(
-                  "No individual videos found."
-              )
+              raise RuntimeError('No individual videos found.')
 
           video = videos[0]
 
-          print("")
-          print("Selected video:")
-          print(video["url"])
+          print('')
+          print('Selected video:')
+          print(video['url'])
 
-          source = get_video_source(
-              video["url"],
-              session
-          )
+          source = get_video_source(video['url'], session)
 
           if not source:
-              raise RuntimeError(
-                  "Video source not found."
-              )
+              raise RuntimeError('Video source not found.')
 
-          print("")
-          print("Video source:")
+          print('')
+          print('Video source:')
           print(source)
 
-          output = Path(
-              "data/test_video.mp4"
-          )
+          output = Path('data/test_video.mp4')
 
-          print("")
-          print("Starting download...")
+          print('')
+          print('Starting download...')
 
-          download_file(
-              source,
-              output,
-              session
-          )
+          download_file(source, output, session)
 
           if not output.exists():
-              raise RuntimeError(
-                  "Downloaded file does not exist."
-              )
+              raise RuntimeError('Downloaded file does not exist.')
 
           size = output.stat().st_size
 
-          print("")
-          print(
-              f"Downloaded: {output}"
-          )
-
-          print(
-              f"File size: "
-              f"{size / (1024 * 1024):.2f} MB"
-          )
+          print('')
+          print(f'Downloaded: {output}')
+          print(f'File size: {size / (1024 * 1024):.2f} MB')
 
           if size < 10000:
-              raise RuntimeError(
-                  "Downloaded file is unexpectedly small."
-              )
+              raise RuntimeError('Downloaded file is unexpectedly small.')
 
-          print("")
-          print("ACTUAL VIDEO DOWNLOAD TEST PASSED")
-
-          PY
+          print('')
+          print('ACTUAL VIDEO DOWNLOAD TEST PASSED')
+          "
 
       - name: Upload downloaded video as artifact
         uses: actions/upload-artifact@v4
@@ -195,3 +132,18 @@ jobs:
           name: parliament-test-video
           path: data/test_video.mp4
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Transcribe Nepali video
+        run: |
+          python src/transcribe.py \
+            data/test_video.mp4 \
+            data/test_video_transcript.json
+
+      - name: Upload Nepali transcript as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: parliament-nepali-transcript
+          path: data/test_video_transcript.json
+          if-no-files-found: error
+          retention-days: 7
