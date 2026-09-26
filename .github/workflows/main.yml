@@ -161,10 +161,25 @@ jobs:
             data/test_video_transcript.json \
             data/test_video_transcript_clean.json
 
+      - name: Analyze important moments
+        run: |
+          python src/analyze.py \
+            data/test_video_transcript_clean.json \
+            data/test_video_analysis.json \
+            10
+
       - name: Upload clean Nepali transcript
         uses: actions/upload-artifact@v4
         with:
           name: parliament-nepali-transcript-clean
           path: data/test_video_transcript_clean.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload clip analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: parliament-clip-analysis
+          path: data/test_video_analysis.json
           if-no-files-found: error
           retention-days: 7
