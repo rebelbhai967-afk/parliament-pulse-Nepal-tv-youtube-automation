@@ -155,10 +155,16 @@ jobs:
             data/test_audio.wav \
             data/test_video_transcript.json
 
-      - name: Upload Nepali transcript as artifact
+      - name: Clean transcript
+        run: |
+          python src/clean_transcript.py \
+            data/test_video_transcript.json \
+            data/test_video_transcript_clean.json
+
+      - name: Upload clean Nepali transcript
         uses: actions/upload-artifact@v4
         with:
-          name: parliament-nepali-transcript
-          path: data/test_video_transcript.json
+          name: parliament-nepali-transcript-clean
+          path: data/test_video_transcript_clean.json
           if-no-files-found: error
           retention-days: 7
