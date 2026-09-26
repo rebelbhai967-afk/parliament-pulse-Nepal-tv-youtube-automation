@@ -1,2 +1,5 @@
+
 faster-whisper
 yt-dlp
+requests
+beautifulsoup4
