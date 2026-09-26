@@ -17,6 +17,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
@@ -134,10 +139,20 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Transcribe Nepali video
+      - name: Extract clean audio
+        run: |
+          ffmpeg \
+            -i data/test_video.mp4 \
+            -vn \
+            -ac 1 \
+            -ar 16000 \
+            -c:a pcm_s16le \
+            data/test_audio.wav
+
+      - name: Transcribe Nepali audio
         run: |
           python src/transcribe.py \
-            data/test_video.mp4 \
+            data/test_audio.wav \
             data/test_video_transcript.json
 
       - name: Upload Nepali transcript as artifact
