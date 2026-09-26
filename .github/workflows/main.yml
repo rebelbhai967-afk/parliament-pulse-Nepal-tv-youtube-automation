@@ -25,7 +25,80 @@ jobs:
           python src/discover.py data/videos.json
 
       - name: Test individual Parliament video detection
+        run: |      - name: Test actual video download
         run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from src.download import (
+              get_session,
+              get_video_pages,
+              get_video_source,
+              download_file
+          )
+
+          with open(
+              "data/videos.json",
+              "r",
+              encoding="utf-8"
+          ) as file:
+              collections = json.load(file)
+
+          if not collections:
+              raise RuntimeError(
+                  "No Parliament collections found."
+              )
+
+          session = get_session()
+
+          videos = get_video_pages(
+              collections[0]["url"],
+              session
+          )
+
+          if not videos:
+              raise RuntimeError(
+                  "No individual videos found."
+              )
+
+          video = videos[0]
+
+          source = get_video_source(
+              video["url"],
+              session
+          )
+
+          if not source:
+              raise RuntimeError(
+                  "Video source not found."
+              )
+
+          output = Path(
+              "data/test_video.mp4"
+          )
+
+          download_file(
+              source,
+              output,
+              session
+          )
+
+          size = output.stat().st_size
+
+          print(
+              f"Downloaded: {output}"
+          )
+
+          print(
+              f"File size: {size / (1024 * 1024):.2f} MB"
+          )
+
+          if size < 10000:
+              raise RuntimeError(
+                  "Downloaded file is unexpectedly small."
+              )
+          PY
           python - <<'PY'
           import json
 
