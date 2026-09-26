@@ -10,14 +10,19 @@ def transcribe_video(video_path: str, output_path: str):
     output = Path(output_path)
 
     if not video.exists():
-        raise FileNotFoundError(f"Video not found: {video}")
+        raise FileNotFoundError(
+            f"Video not found: {video}"
+        )
 
-    output.parent.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     print(f"Transcribing: {video}")
 
     model = WhisperModel(
-        "small",
+        "medium",
         device="cpu",
         compute_type="int8"
     )
@@ -25,14 +30,27 @@ def transcribe_video(video_path: str, output_path: str):
     segments, info = model.transcribe(
         str(video),
         language="ne",
+        task="transcribe",
+        beam_size=5,
+        temperature=0,
         vad_filter=True,
-        word_timestamps=True
+        word_timestamps=True,
+        condition_on_previous_text=True,
+        initial_prompt=(
+            "यो नेपालको संघीय संसदको औपचारिक बैठक हो। "
+            "नेपाली भाषामा सभामुख, अध्यक्ष, सांसद, "
+            "मन्त्री तथा सरकारी अधिकारीहरूले सम्बोधन "
+            "गरिरहेका छन्।"
+        )
     )
 
     transcript = {
         "video": str(video),
         "language": info.language,
-        "language_probability": info.language_probability,
+        "language_probability": (
+            info.language_probability
+        ),
+        "model": "medium",
         "segments": []
     }
 
@@ -43,7 +61,11 @@ def transcribe_video(video_path: str, output_path: str):
             "nepali": segment.text.strip()
         })
 
-    with open(output, "w", encoding="utf-8") as file:
+    with open(
+        output,
+        "w",
+        encoding="utf-8"
+    ) as file:
         json.dump(
             transcript,
             file,
@@ -51,7 +73,9 @@ def transcribe_video(video_path: str, output_path: str):
             indent=2
         )
 
-    print(f"Transcript saved to: {output}")
+    print(
+        f"Transcript saved to: {output}"
+    )
 
 
 if __name__ == "__main__":
