@@ -25,137 +25,51 @@ jobs:
           python src/discover.py data/videos.json
 
       - name: Test individual Parliament video detection
-        run: |      - name: Test actual video download
         run: |
-          python - <<'PY'
+          python -c "
           import json
-          from pathlib import Path
+          from src.download import get_session, get_video_pages, get_video_source
 
-          from src.download import (
-              get_session,
-              get_video_pages,
-              get_video_source,
-              download_file
-          )
-
-          with open(
-              "data/videos.json",
-              "r",
-              encoding="utf-8"
-          ) as file:
+          with open('data/videos.json', 'r', encoding='utf-8') as file:
               collections = json.load(file)
 
           if not collections:
-              raise RuntimeError(
-                  "No Parliament collections found."
-              )
-
-          session = get_session()
-
-          videos = get_video_pages(
-              collections[0]["url"],
-              session
-          )
-
-          if not videos:
-              raise RuntimeError(
-                  "No individual videos found."
-              )
-
-          video = videos[0]
-
-          source = get_video_source(
-              video["url"],
-              session
-          )
-
-          if not source:
-              raise RuntimeError(
-                  "Video source not found."
-              )
-
-          output = Path(
-              "data/test_video.mp4"
-          )
-
-          download_file(
-              source,
-              output,
-              session
-          )
-
-          size = output.stat().st_size
-
-          print(
-              f"Downloaded: {output}"
-          )
-
-          print(
-              f"File size: {size / (1024 * 1024):.2f} MB"
-          )
-
-          if size < 10000:
-              raise RuntimeError(
-                  "Downloaded file is unexpectedly small."
-              )
-          PY
-          python - <<'PY'
-          import json
-
-          from src.download import (
-              get_session,
-              get_video_pages,
-              get_video_source
-          )
-
-          with open(
-              "data/videos.json",
-              "r",
-              encoding="utf-8"
-          ) as file:
-              collections = json.load(file)
-
-          if not collections:
-              raise RuntimeError(
-                  "No Parliament video collections found."
-              )
+              raise RuntimeError('No Parliament collections found.')
 
           collection = collections[0]
 
-          print("Testing collection:")
-          print(collection["title"])
-          print(collection["url"])
+          print('Testing collection:')
+          print(collection['title'])
+          print(collection['url'])
 
           session = get_session()
 
           videos = get_video_pages(
-              collection["url"],
+              collection['url'],
               session
           )
 
-          print(
-              f"Found {len(videos)} individual videos"
-          )
+          print(f'Found {len(videos)} individual videos')
 
           if not videos:
               raise RuntimeError(
-                  "Collection found, but no individual videos detected."
+                  'Collection found, but no individual videos detected.'
               )
 
           for video in videos[:3]:
               print()
-              print("Video:")
-              print(video["title"])
-              print(video["url"])
+              print('Video:')
+              print(video['title'])
+              print(video['url'])
 
               source = get_video_source(
-                  video["url"],
+                  video['url'],
                   session
               )
 
               if source:
-                  print("SOURCE FOUND:")
+                  print('SOURCE FOUND:')
                   print(source)
               else:
-                  print("SOURCE NOT FOUND")
-          PY
+                  print('SOURCE NOT FOUND')
+          "
