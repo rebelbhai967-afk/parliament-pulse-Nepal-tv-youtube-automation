@@ -1,36 +1,71 @@
+import json
 import sys
 from pathlib import Path
+from urllib.parse import urljoin
 
-import yt_dlp
+import requests
+from bs4 import BeautifulSoup
 
 
-def download_video(url: str, output_dir: str):
-    output = Path(output_dir)
-    output.mkdir(parents=True, exist_ok=True)
+BASE_URL = "https://na.parliament.gov.np"
 
-    options = {
-        "format": "bestvideo+bestaudio/best",
-        "merge_output_format": "mp4",
-        "outtmpl": str(output / "%(id)s.%(ext)s"),
-    }
 
-    print(f"Downloading: {url}")
+def discover_videos(output_path: str):
+    output = Path(output_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
 
-    with yt_dlp.YoutubeDL(options) as ydl:
-        ydl.download([url])
+    archive_url = f"{BASE_URL}/np/videos"
 
-    print(f"Download completed: {output}")
+    print(f"Checking: {archive_url}")
+
+    response = requests.get(
+        archive_url,
+        timeout=30,
+        headers={"User-Agent": "Mozilla/5.0"}
+    )
+    response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    videos = []
+    seen = set()
+
+    for link in soup.find_all("a", href=True):
+        href = link["href"]
+        title = link.get_text(" ", strip=True)
+
+        if "/np/video/" in href or "/en/video/" in href:
+            video_url = urljoin(BASE_URL, href)
+
+            if video_url not in seen:
+                seen.add(video_url)
+
+                videos.append({
+                    "title": title,
+                    "url": video_url
+                })
+
+    with open(
+        output,
+        "w",
+        encoding="utf-8"
+    ) as file:
+        json.dump(
+            videos,
+            file,
+            ensure_ascii=False,
+            indent=2
+        )
+
+    print(f"Found {len(videos)} videos")
+    print(f"Saved to: {output}")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 2:
         print(
-            "Usage: python download.py "
-            "<youtube_url> <output_directory>"
+            "Usage: python discover.py <output_json>"
         )
         sys.exit(1)
 
-    download_video(
-        sys.argv[1],
-        sys.argv[2]
-    )
+    discover_videos(sys.argv[1])
