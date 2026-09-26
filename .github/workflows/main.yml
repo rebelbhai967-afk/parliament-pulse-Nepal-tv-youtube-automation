@@ -1,4 +1,30 @@
-      - name: Test video source detection
+name: Parliament Pulse Nepal Automation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Test discovery
+        run: |
+          python src/discover.py data/videos.json
+
+      - name: Test individual Parliament video detection
         run: |
           python - <<'PY'
           import json
@@ -40,12 +66,10 @@
 
           if not videos:
               raise RuntimeError(
-                  "Collection found, but "
-                  "no individual videos detected."
+                  "Collection found, but no individual videos detected."
               )
 
           for video in videos[:3]:
-
               print()
               print("Video:")
               print(video["title"])
