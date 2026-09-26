@@ -22,7 +22,7 @@ def transcribe_video(video_path: str, output_path: str):
     print(f"Transcribing: {video}")
 
     model = WhisperModel(
-        "medium",
+        "large-v3-turbo",
         device="cpu",
         compute_type="int8"
     )
@@ -32,6 +32,7 @@ def transcribe_video(video_path: str, output_path: str):
         language="ne",
         task="transcribe",
         beam_size=5,
+        best_of=5,
         temperature=0,
         vad_filter=True,
         word_timestamps=True,
@@ -40,7 +41,9 @@ def transcribe_video(video_path: str, output_path: str):
             "यो नेपालको संघीय संसदको औपचारिक बैठक हो। "
             "नेपाली भाषामा सभामुख, अध्यक्ष, सांसद, "
             "मन्त्री तथा सरकारी अधिकारीहरूले सम्बोधन "
-            "गरिरहेका छन्।"
+            "गरिरहेका छन्। "
+            "सम्भव भएसम्म स्पष्ट र शुद्ध नेपाली शब्द "
+            "प्रयोग गर्नुहोस्।"
         )
     )
 
@@ -50,15 +53,20 @@ def transcribe_video(video_path: str, output_path: str):
         "language_probability": (
             info.language_probability
         ),
-        "model": "medium",
+        "model": "large-v3-turbo",
         "segments": []
     }
 
     for segment in segments:
+        text = segment.text.strip()
+
+        if not text:
+            continue
+
         transcript["segments"].append({
             "start": round(segment.start, 3),
             "end": round(segment.end, 3),
-            "nepali": segment.text.strip()
+            "nepali": text
         })
 
     with open(
