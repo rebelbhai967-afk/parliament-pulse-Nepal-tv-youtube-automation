@@ -1,5 +1,4 @@
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -9,196 +8,191 @@ PLATFORMS = {
     "youtube": {
         "width": 1920,
         "height": 1080,
-        "cta": "SUBSCRIBE",
-        "vertical": False,
     },
     "youtube_shorts": {
         "width": 1080,
         "height": 1920,
-        "cta": "SUBSCRIBE",
-        "vertical": True,
     },
     "facebook": {
         "width": 1080,
         "height": 1920,
-        "cta": "FOLLOW",
-        "vertical": True,
     },
     "instagram": {
         "width": 1080,
         "height": 1920,
-        "cta": "FOLLOW",
-        "vertical": True,
     },
     "tiktok": {
         "width": 1080,
         "height": 1920,
-        "cta": "FOLLOW",
-        "vertical": True,
     },
 }
 
 
 def run_command(command):
     print("")
-    print("Running FFmpeg:")
-    print(" ".join(str(x) for x in command))
+    print("Running:")
+    print(" ".join(command))
     print("")
 
-    subprocess.run(
+    result = subprocess.run(
         command,
-        check=True
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
     )
+
+    print(result.stdout)
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Command failed with code "
+            f"{result.returncode}"
+        )
 
 
 def load_analysis(path):
-    with open(
-        path,
-        "r",
-        encoding="utf-8"
-    ) as file:
-        data = json.load(file)
+    analysis_file = Path(path)
 
-    candidates = data.get(
-        "candidates",
-        []
-    )
-
-    if not candidates:
-        raise RuntimeError(
-            "No clip candidates found."
+    if not analysis_file.exists():
+        raise FileNotFoundError(
+            f"Analysis file not found: "
+            f"{analysis_file}"
         )
 
-    return candidates
-
-
-def srt_time_to_seconds(value):
-    value = value.strip()
-
-    match = re.match(
-        r"(\d+):(\d+):(\d+),(\d+)",
-        value
-    )
-
-    if not match:
-        return 0.0
-
-    hours = int(match.group(1))
-    minutes = int(match.group(2))
-    seconds = int(match.group(3))
-    milliseconds = int(match.group(4))
-
-    return (
-        hours * 3600
-        + minutes * 60
-        + seconds
-        + milliseconds / 1000
-    )
+    with open(
+        analysis_file,
+        "r",
+        encoding="utf-8",
+    ) as file:
+        return json.load(file)
 
 
 def seconds_to_srt_time(seconds):
     seconds = max(
-        0.0,
+        0,
         float(seconds)
     )
 
-    hours = int(
-        seconds // 3600
-    )
+    hours = int(seconds // 3600)
 
     minutes = int(
         (seconds % 3600) // 60
     )
 
-    whole_seconds = int(
-        seconds % 60
-    )
+    secs = int(seconds % 60)
 
-    milliseconds = int(
+    millis = int(
         round(
             (seconds - int(seconds))
             * 1000
         )
     )
 
-    if milliseconds >= 1000:
-        whole_seconds += 1
-        milliseconds = 0
+    if millis >= 1000:
+        secs += 1
+        millis = 0
 
     return (
         f"{hours:02d}:"
         f"{minutes:02d}:"
-        f"{whole_seconds:02d},"
-        f"{milliseconds:03d}"
+        f"{secs:02d},"
+        f"{millis:03d}"
     )
+
+
+def srt_time_to_seconds(value):
+    value = value.strip()
+
+    time_part, millis = value.split(",")
+
+    hours, minutes, seconds = map(
+        int,
+        time_part.split(":")
+    )
+
+    return (
+        hours * 3600
+        + minutes * 60
+        + seconds
+        + int(millis) / 1000
+    )
+
+
+def load_subtitles():
+    possible_files = [
+        Path(
+            "data/test_video_subtitles.srt"
+        ),
+        Path(
+            "data/subtitles.srt"
+        ),
+    ]
+
+    for subtitle_file in possible_files:
+        if subtitle_file.exists():
+            print(
+                f"Using subtitles: "
+                f"{subtitle_file}"
+            )
+            return subtitle_file
+
+    print(
+        "No subtitle file found."
+    )
+
+    return None
 
 
 def make_clip_subtitles(
-    source_srt,
-    output_srt,
+    subtitle_file,
     clip_start,
-    clip_end
+    clip_end,
+    output_file,
 ):
-    source = Path(source_srt)
-
-    if not source.exists():
+    if not subtitle_file:
         return False
 
-    content = source.read_text(
-        encoding="utf-8"
+    with open(
+        subtitle_file,
+        "r",
+        encoding="utf-8",
+    ) as file:
+        content = file.read()
+
+    blocks = content.split(
+        "\n\n"
     )
 
-    blocks = re.split(
-        r"\n\s*\n",
-        content.strip()
-    )
+    output_blocks = []
 
-    result = []
-    number = 1
+    index = 1
 
     for block in blocks:
-
-        lines = block.splitlines()
-
-        timing_index = None
-
-        for i, line in enumerate(lines):
-            if "-->" in line:
-                timing_index = i
-                break
-
-        if timing_index is None:
-            continue
-
-        timing = lines[timing_index]
-
-        parts = timing.split(
-            "-->"
-        )
-
-        if len(parts) != 2:
-            continue
-
-        start = srt_time_to_seconds(
-            parts[0]
-        )
-
-        end = srt_time_to_seconds(
-            parts[1]
-        )
-
-        subtitle_lines = lines[
-            timing_index + 1:
+        lines = [
+            line.strip()
+            for line in block.splitlines()
+            if line.strip()
         ]
 
-        subtitle_text = "\n".join(
-            line.strip()
-            for line in subtitle_lines
-            if line.strip()
-            and not line.strip().isdigit()
-        )
+        if len(lines) < 3:
+            continue
 
-        if not subtitle_text:
+        try:
+            times = lines[1]
+
+            start_text, end_text = (
+                times.split("-->")
+            )
+
+            start = srt_time_to_seconds(
+                start_text
+            )
+
+            end = srt_time_to_seconds(
+                end_text
+            )
+
+        except Exception:
             continue
 
         if end <= clip_start:
@@ -208,50 +202,66 @@ def make_clip_subtitles(
             continue
 
         new_start = max(
-            0,
-            start - clip_start
-        )
+            start,
+            clip_start
+        ) - clip_start
 
         new_end = min(
-            clip_end - clip_start,
-            end - clip_start
-        )
+            end,
+            clip_end
+        ) - clip_start
 
         if new_end <= new_start:
             continue
 
-        result.append(
-            "\n".join([
-                str(number),
-                (
-                    seconds_to_srt_time(
-                        new_start
-                    )
-                    + " --> "
-                    + seconds_to_srt_time(
-                        new_end
-                    )
-                ),
-                subtitle_text,
-            ])
+        text = "\n".join(
+            lines[2:]
         )
 
-        number += 1
+        output_blocks.append(
+            (
+                index,
+                new_start,
+                new_end,
+                text
+            )
+        )
 
-    if not result:
+        index += 1
+
+    if not output_blocks:
         return False
 
-    output = Path(output_srt)
+    with open(
+        output_file,
+        "w",
+        encoding="utf-8",
+    ) as file:
 
-    output.parent.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+        for (
+            index,
+            start,
+            end,
+            text
+        ) in output_blocks:
 
-    output.write_text(
-        "\n\n".join(result)
-        + "\n",
-        encoding="utf-8"
+            file.write(
+                f"{index}\n"
+            )
+
+            file.write(
+                f"{seconds_to_srt_time(start)}"
+                f" --> "
+                f"{seconds_to_srt_time(end)}\n"
+            )
+
+            file.write(
+                f"{text}\n\n"
+            )
+
+    print(
+        f"Created clip subtitles: "
+        f"{output_file}"
     )
 
     return True
@@ -259,7 +269,7 @@ def make_clip_subtitles(
 
 def escape_subtitle_path(path):
     value = str(
-        Path(path).resolve()
+        path.resolve()
     )
 
     value = value.replace(
@@ -281,62 +291,96 @@ def escape_subtitle_path(path):
 
 
 def create_clip(
-    video_path,
-    analysis_path,
+    video_file,
+    analysis_file,
     output_dir,
     platform,
-    candidate_number=1
+    content_number,
 ):
-    video = Path(video_path)
-    analysis = Path(analysis_path)
-    output = Path(output_dir)
-
-    if not video.exists():
-        raise FileNotFoundError(
-            f"Video not found: {video}"
-        )
-
-    if not analysis.exists():
-        raise FileNotFoundError(
-            f"Analysis not found: {analysis}"
-        )
-
     if platform not in PLATFORMS:
         raise ValueError(
-            f"Unsupported platform: {platform}"
+            f"Unsupported platform: "
+            f"{platform}"
         )
 
-    candidates = load_analysis(
-        analysis
+    if content_number == 1:
+        content_type = "long_video"
+
+    elif content_number == 2:
+        content_type = "short_video"
+
+    else:
+        raise ValueError(
+            "Content number must be "
+            "1 or 2."
+        )
+
+    video_path = Path(
+        video_file
     )
 
-    if (
-        candidate_number < 1
-        or candidate_number > len(candidates)
-    ):
-        raise ValueError(
-            f"Invalid candidate number: "
-            f"{candidate_number}"
+    output = Path(
+        output_dir
+    )
+
+    output.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    if not video_path.exists():
+        raise FileNotFoundError(
+            f"Video not found: "
+            f"{video_path}"
         )
 
-    candidate = candidates[
-        candidate_number - 1
-    ]
+    analysis = load_analysis(
+        analysis_file
+    )
+
+    selected = analysis.get(
+        content_type
+    )
+
+    print("")
+    print(
+        "===================================="
+    )
+    print(
+        f"Creating {content_type}"
+    )
+    print(
+        f"Platform: {platform}"
+    )
+    print(
+        "===================================="
+    )
+
+    if not selected:
+        print("")
+        print(
+            f"No {content_type} was selected."
+        )
+        print(
+            "Skipping clip creation."
+        )
+        print("")
+        return None
 
     start = float(
-        candidate["start"]
+        selected["start"]
     )
 
     end = float(
-        candidate["end"]
+        selected["end"]
     )
 
-    duration = end - start
-
-    if duration <= 0:
+    if end <= start:
         raise RuntimeError(
-            "Invalid clip duration."
+            "Invalid clip timing."
         )
+
+    duration = end - start
 
     settings = PLATFORMS[
         platform
@@ -344,260 +388,228 @@ def create_clip(
 
     width = settings["width"]
     height = settings["height"]
-    cta = settings["cta"]
-    vertical = settings["vertical"]
 
-    output.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+    subtitle_source = load_subtitles()
 
-    logo = Path(
-        "assets/logo.png"
-    )
-
-    # Find English subtitle file.
-    subtitle_sources = [
-        Path(
-            "data/test_video_subtitles.srt"
-        ),
-        Path(
-            "data/subtitles.srt"
-        ),
-    ]
-
-    source_srt = None
-
-    for subtitle in subtitle_sources:
-        if subtitle.exists():
-            source_srt = subtitle
-            break
-
-    clip_srt = (
+    clip_subtitle = (
         output
-        / f"clip_{candidate_number:02d}_subtitles.srt"
+        / f"{content_type}_subtitles.srt"
     )
 
-    subtitles_available = False
-
-    if source_srt:
-        subtitles_available = make_clip_subtitles(
-            source_srt,
-            clip_srt,
-            start,
-            end
-        )
-
-    filters = []
-
-    # Video sizing.
-    if vertical:
-        filters.append(
-            f"scale={width}:{height}:"
-            "force_original_aspect_ratio=increase"
-        )
-
-        filters.append(
-            f"crop={width}:{height}"
-        )
-
-    else:
-        filters.append(
-            f"scale={width}:{height}:"
-            "force_original_aspect_ratio=decrease"
-        )
-
-        filters.append(
-            f"pad={width}:{height}:"
-            "(ow-iw)/2:(oh-ih)/2"
-        )
-
-    # Cover official logo area on YouTube 16:9.
-    if not vertical:
-        filters.append(
-            "drawbox="
-            "x=45:"
-            "y=35:"
-            "w=310:"
-            "h=245:"
-            "color=white@0.94:"
-            "t=fill"
-        )
-
-    # PPN text.
-    filters.append(
-        "drawtext="
-        "fontcolor=black:"
-        "fontsize=25:"
-        "text='PARLIAMENT PULSE NEPAL TV':"
-        "x=40:"
-        "y=245"
+    has_subtitles = make_clip_subtitles(
+        subtitle_source,
+        start,
+        end,
+        clip_subtitle,
     )
 
-    # Engagement bar.
-    filters.append(
-        "drawtext="
-        "fontcolor=white:"
-        "fontsize=27:"
-        f"text='LIKE  |  COMMENT  |  SHARE  |  {cta}':"
-        "x=(w-text_w)/2:"
-        "y=h-75:"
-        "box=1:"
-        "boxcolor=black@0.70:"
-        "boxborderw=12"
-    )
-
-    # English subtitles.
-    if subtitles_available:
-        subtitle_path = escape_subtitle_path(
-            clip_srt
-        )
-
-        filters.append(
-            f"subtitles='{subtitle_path}':"
-            "force_style="
-            "'FontName=DejaVu Sans,"
-            "FontSize=18,"
-            "Bold=1,"
-            "PrimaryColour=&H00FFFFFF,"
-            "OutlineColour=&H00000000,"
-            "Outline=3,"
-            "Shadow=1,"
-            "Alignment=2,"
-            "MarginV=125'"
-        )
-
-    video_filter = ",".join(
-        filters
+    safe_platform = platform.replace(
+        "_",
+        "-"
     )
 
     output_file = (
         output
-        / (
-            f"clip_{candidate_number:02d}_"
-            f"{platform}.mp4"
-        )
+        / f"{safe_platform}_{content_type}.mp4"
     )
 
-    # With logo.
-    if logo.exists():
+    # ------------------------------------------------
+    # VIDEO FORMAT
+    # ------------------------------------------------
 
-        filter_complex = (
-            f"[0:v]"
-            f"{video_filter}"
-            "[base];"
-            "[1:v]"
-            "scale=190:-1"
-            "[logo];"
-            "[base][logo]"
-            "overlay=40:35"
-            "[final]"
+    if platform == "youtube":
+
+        video_filter = (
+            f"scale={width}:{height}:"
+            "force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:"
+            "(ow-iw)/2:"
+            "(oh-ih)/2,"
+            "setsar=1"
         )
-
-        command = [
-            "ffmpeg",
-            "-y",
-
-            "-ss",
-            str(start),
-
-            "-t",
-            str(duration),
-
-            "-i",
-            str(video),
-
-            "-i",
-            str(logo),
-
-            "-filter_complex",
-            filter_complex,
-
-            "-map",
-            "[final]",
-
-            "-map",
-            "0:a?",
-
-            "-c:v",
-            "libx264",
-
-            "-preset",
-            "veryfast",
-
-            "-crf",
-            "23",
-
-            "-c:a",
-            "aac",
-
-            "-b:a",
-            "128k",
-
-            "-movflags",
-            "+faststart",
-
-            str(output_file),
-        ]
 
     else:
 
-        command = [
-            "ffmpeg",
-            "-y",
+        video_filter = (
+            f"scale={width}:{height}:"
+            "force_original_aspect_ratio=increase,"
+            f"crop={width}:{height},"
+            "setsar=1"
+        )
 
-            "-ss",
-            str(start),
+    # ------------------------------------------------
+    # BRANDING
+    # ------------------------------------------------
 
-            "-t",
-            str(duration),
+    drawtext = (
+        "drawtext="
+        "fontfile=/usr/share/fonts/truetype/"
+        "dejavu/DejaVuSans-Bold.ttf:"
+        "text='PARLIAMENT PULSE NEPAL TV':"
+        "fontcolor=white:"
+        "fontsize=34:"
+        "box=1:"
+        "boxcolor=black@0.65:"
+        "boxborderw=12:"
+        "x=40:"
+        "y=h-105"
+    )
 
-            "-i",
-            str(video),
+    engagement = (
+        "drawtext="
+        "fontfile=/usr/share/fonts/truetype/"
+        "dejavu/DejaVuSans-Bold.ttf:"
+        "text='LIKE  |  COMMENT  |  SHARE':"
+        "fontcolor=white:"
+        "fontsize=28:"
+        "box=1:"
+        "boxcolor=black@0.55:"
+        "boxborderw=8:"
+        "x=40:"
+        "y=h-55"
+    )
 
-            "-vf",
-            video_filter,
+    video_filter += (
+        ","
+        + drawtext
+        + ","
+        + engagement
+    )
 
-            "-map",
-            "0:v:0",
+    # ------------------------------------------------
+    # SUBTITLES
+    # ------------------------------------------------
 
-            "-map",
-            "0:a?",
+    if has_subtitles:
 
+        subtitle_path = (
+            escape_subtitle_path(
+                clip_subtitle
+            )
+        )
+
+        video_filter += (
+            ",subtitles="
+            f"'{subtitle_path}'"
+            ":force_style="
+            "'FontName=DejaVu Sans,"
+            "FontSize=22,"
+            "PrimaryColour=&H00FFFFFF,"
+            "OutlineColour=&H00000000,"
+            "Outline=2,"
+            "Shadow=1,"
+            "Alignment=2,"
+            "MarginV=70'"
+        )
+
+    # ------------------------------------------------
+    # LOGO
+    # ------------------------------------------------
+
+    logo_file = Path(
+        "assets/logo.png"
+    )
+
+    command = [
+        "ffmpeg",
+        "-y",
+        "-ss",
+        str(start),
+        "-i",
+        str(video_path),
+        "-t",
+        str(duration),
+    ]
+
+    if logo_file.exists():
+
+        command.extend(
+            [
+                "-i",
+                str(logo_file),
+            ]
+        )
+
+        filter_complex = (
+            f"[0:v]{video_filter}[base];"
+            "[1:v]"
+            "scale=260:-1[logo];"
+            "[base][logo]"
+            "overlay=40:35"
+            "[v]"
+        )
+
+        command.extend(
+            [
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[v]",
+                "-map",
+                "0:a?",
+            ]
+        )
+
+    else:
+
+        print(
+            "Warning: "
+            "assets/logo.png not found."
+        )
+
+        command.extend(
+            [
+                "-vf",
+                video_filter,
+                "-map",
+                "0:v",
+                "-map",
+                "0:a?",
+            ]
+        )
+
+    command.extend(
+        [
             "-c:v",
             "libx264",
-
             "-preset",
             "veryfast",
-
             "-crf",
             "23",
-
+            "-pix_fmt",
+            "yuv420p",
             "-c:a",
             "aac",
-
             "-b:a",
             "128k",
-
             "-movflags",
             "+faststart",
-
             str(output_file),
         ]
+    )
 
     run_command(
         command
     )
 
+    if not output_file.exists():
+        raise RuntimeError(
+            "Output video was not created."
+        )
+
+    size = output_file.stat().st_size
+
+    if size < 10000:
+        raise RuntimeError(
+            "Output video is unexpectedly small."
+        )
+
     print("")
-    print(
-        "=============================="
-    )
     print(
         "CLIP CREATED SUCCESSFULLY"
     )
     print(
-        "=============================="
+        f"Type: {content_type}"
     )
     print(
         f"Platform: {platform}"
@@ -612,53 +624,54 @@ def create_clip(
         f"Duration: {duration:.2f}s"
     )
     print(
-        f"Logo: {logo.exists()}"
-    )
-    print(
-        f"English subtitles: "
-        f"{subtitles_available}"
-    )
-    print(
         f"Output: {output_file}"
     )
     print(
-        "=============================="
+        f"Size: {size / (1024 * 1024):.2f} MB"
     )
+
+    return output_file
 
 
 if __name__ == "__main__":
 
-    if len(sys.argv) not in [5, 6]:
+    if len(sys.argv) != 6:
+
+        print("Usage:")
         print(
-            "Usage:"
-        )
-        print(
-            "python src/clip.py "
+            "python clip.py "
             "<video> "
             "<analysis_json> "
             "<output_dir> "
             "<platform> "
-            "[candidate_number]"
+            "<content_number>"
+        )
+
+        print("")
+        print(
+            "content_number:"
+        )
+        print(
+            "1 = long_video"
+        )
+        print(
+            "2 = short_video"
         )
 
         sys.exit(1)
 
-    video_path = sys.argv[1]
-    analysis_path = sys.argv[2]
+    video_file = sys.argv[1]
+    analysis_file = sys.argv[2]
     output_dir = sys.argv[3]
     platform = sys.argv[4]
-
-    candidate_number = 1
-
-    if len(sys.argv) == 6:
-        candidate_number = int(
-            sys.argv[5]
-        )
+    content_number = int(
+        sys.argv[5]
+    )
 
     create_clip(
-        video_path,
-        analysis_path,
+        video_file,
+        analysis_file,
         output_dir,
         platform,
-        candidate_number
+        content_number,
     )
