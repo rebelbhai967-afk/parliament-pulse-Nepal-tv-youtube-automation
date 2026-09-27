@@ -563,101 +563,121 @@ jobs:
               )
           PY
 
+      # ==========================================
+      # LONG YOUTUBE
+      # ==========================================
+
       - name: Create Long YouTube video
         run: |
-          cp data/long_subtitles.srt \
-             data/test_video_subtitles.srt
-
           python src/clip.py \
             data/selected_long.mp4 \
             data/long_analysis.json \
             output/youtube \
             youtube \
-            1
+            1 \
+            data/long_subtitles.srt
+
+      # ==========================================
+      # SEPARATE YOUTUBE SHORT
+      # ==========================================
 
       - name: Create Separate YouTube Short
         run: |
-          cp data/short_subtitles.srt \
-             data/test_video_subtitles.srt
-
           python src/clip.py \
             data/selected_short.mp4 \
             data/short_analysis.json \
             output/youtube_shorts \
             youtube_shorts \
-            2
+            2 \
+            data/short_subtitles.srt
+
+      # ==========================================
+      # LONG FACEBOOK
+      # ==========================================
 
       - name: Create Long Facebook video
         run: |
-          cp data/long_subtitles.srt \
-             data/test_video_subtitles.srt
-
           python src/clip.py \
             data/selected_long.mp4 \
             data/long_analysis.json \
             output/facebook \
             facebook \
-            1
+            1 \
+            data/long_subtitles.srt
+
+      # ==========================================
+      # SEPARATE FACEBOOK REEL
+      # ==========================================
 
       - name: Create Separate Facebook Reel
         run: |
-          cp data/short_subtitles.srt \
-             data/test_video_subtitles.srt
-
           python src/clip.py \
             data/selected_short.mp4 \
             data/short_analysis.json \
             output/facebook_reels \
             facebook \
-            2
+            2 \
+            data/short_subtitles.srt
+
+      # ==========================================
+      # LONG INSTAGRAM
+      # ==========================================
 
       - name: Create Long Instagram video
         run: |
-          cp data/long_subtitles.srt \
-             data/test_video_subtitles.srt
-
           python src/clip.py \
             data/selected_long.mp4 \
             data/long_analysis.json \
             output/instagram \
             instagram \
-            1
+            1 \
+            data/long_subtitles.srt
+
+      # ==========================================
+      # SEPARATE INSTAGRAM REEL
+      # ==========================================
 
       - name: Create Separate Instagram Reel
         run: |
-          cp data/short_subtitles.srt \
-             data/test_video_subtitles.srt
-
           python src/clip.py \
             data/selected_short.mp4 \
             data/short_analysis.json \
             output/instagram_reels \
             instagram \
-            2
+            2 \
+            data/short_subtitles.srt
+
+      # ==========================================
+      # LONG TIKTOK
+      # ==========================================
 
       - name: Create Long TikTok video
         run: |
-          cp data/long_subtitles.srt \
-             data/test_video_subtitles.srt
-
           python src/clip.py \
             data/selected_long.mp4 \
             data/long_analysis.json \
             output/tiktok \
             tiktok \
-            1
+            1 \
+            data/long_subtitles.srt
+
+      # ==========================================
+      # SEPARATE TIKTOK
+      # ==========================================
 
       - name: Create Separate TikTok video
         run: |
-          cp data/short_subtitles.srt \
-             data/test_video_subtitles.srt
-
           python src/clip.py \
             data/selected_short.mp4 \
             data/short_analysis.json \
             output/tiktok_shorts \
             tiktok \
-            2
+            2 \
+            data/short_subtitles.srt
+
+      # ==========================================
+      # VERIFY OUTPUT
+      # ==========================================
 
       - name: Verify generated clips
         run: |
@@ -673,6 +693,10 @@ jobs:
             echo "Not enough clips generated."
             exit 1
           fi
+
+      # ==========================================
+      # ARTIFACTS
+      # ==========================================
 
       - name: Upload daily selection
         uses: actions/upload-artifact@v4
