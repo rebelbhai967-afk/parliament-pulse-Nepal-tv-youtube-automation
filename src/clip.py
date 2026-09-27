@@ -93,6 +93,15 @@ def create_story_subtitles(
         return False
 
     transcript_file = Path(transcript_path)
+    output_file = Path(output_path)
+
+    # IMPORTANT:
+    # The subtitle file is created BEFORE create_clip(),
+    # so its parent directory must already exist here.
+    output_file.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     if not transcript_file.exists():
         print(
@@ -120,6 +129,7 @@ def create_story_subtitles(
     ):
         start = float(segment.get("start", 0))
         end = float(segment.get("end", 0))
+
         text = str(
             segment.get("english")
             or segment.get("nepali")
@@ -157,10 +167,11 @@ def create_story_subtitles(
         )
 
     with open(
-        output_path,
+        output_file,
         "w",
         encoding="utf-8"
     ) as file:
+
         for index, (
             start,
             end,
@@ -181,8 +192,9 @@ def create_story_subtitles(
             )
 
     print(
-        f"Created subtitles: {output_path}"
+        f"Created subtitles: {output_file}"
     )
+
     print(
         f"Subtitle entries: {len(subtitles)}"
     )
@@ -194,10 +206,13 @@ def format_srt_time(seconds):
     seconds = max(0, float(seconds))
 
     hours = int(seconds // 3600)
+
     minutes = int(
         (seconds % 3600) // 60
     )
+
     secs = int(seconds % 60)
+
     millis = int(
         round(
             (seconds - int(seconds))
@@ -228,6 +243,18 @@ def format_srt_time(seconds):
 def escape_drawtext(text):
     return (
         text
+        .replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+        .replace(",", "\\,")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+    )
+
+
+def escape_filter_path(path):
+    return (
+        str(path)
         .replace("\\", "\\\\")
         .replace(":", "\\:")
         .replace("'", "\\'")
@@ -269,6 +296,7 @@ def create_clip(
             f"Video not found: {video}"
         )
 
+    # Always create output directory before FFmpeg.
     output.parent.mkdir(
         parents=True,
         exist_ok=True
@@ -317,9 +345,11 @@ def create_clip(
         subtitle = Path(subtitle_path)
 
         if subtitle.exists():
+            subtitle_file = escape_filter_path(subtitle)
+
             subtitle_filter = (
                 "subtitles="
-                f"'{subtitle}':"
+                f"'{subtitle_file}':"
                 "force_style="
                 "'FontName=DejaVu Sans,"
                 "FontSize=22,"
@@ -347,6 +377,9 @@ def create_clip(
         "fontcolor=white"
     )
 
+    # ---------------------------------------------------------
+    # LOGO + FILTER GRAPH
+    # ---------------------------------------------------------
     if (
         logo_path
         and Path(logo_path).exists()
@@ -355,43 +388,59 @@ def create_clip(
 
         filter_complex = (
             "[1:v]"
-            "scale=260:-1[logo];"
+            "scale=260:-1"
+            "[logo];"
             "[0:v]"
             + ",".join(filters)
             + "[base];"
             "[base][logo]"
             "overlay=40:35"
+            "[vout]"
         )
 
         command = [
             "ffmpeg",
             "-y",
+
             "-ss",
             str(start),
+
             "-t",
             str(end - start),
+
             "-i",
             str(video),
+
             "-i",
             str(logo),
+
             "-filter_complex",
             filter_complex,
+
             "-map",
-            "0:v",
+            "[vout]",
+
             "-map",
             "0:a?",
+
             "-c:v",
             "libx264",
+
             "-preset",
             "veryfast",
+
             "-crf",
             "23",
+
             "-c:a",
             "aac",
+
             "-b:a",
             "192k",
+
             "-movflags",
             "+faststart",
+
             str(output)
         ]
 
@@ -401,30 +450,43 @@ def create_clip(
         command = [
             "ffmpeg",
             "-y",
+
             "-ss",
             str(start),
+
             "-t",
             str(end - start),
+
             "-i",
             str(video),
+
             "-vf",
             video_filter,
+
             "-map",
             "0:v",
+
             "-map",
             "0:a?",
+
             "-c:v",
             "libx264",
+
             "-preset",
             "veryfast",
+
             "-crf",
             "23",
+
             "-c:a",
             "aac",
+
             "-b:a",
             "192k",
+
             "-movflags",
             "+faststart",
+
             str(output)
         ]
 
@@ -465,6 +527,7 @@ def main():
         print(
             "Usage:"
         )
+
         print(
             "python src/clip.py "
             "<default_video> "
@@ -474,6 +537,7 @@ def main():
             "<content_number> "
             "<subtitle_transcript>"
         )
+
         sys.exit(1)
 
     default_video = sys.argv[1]
@@ -482,6 +546,14 @@ def main():
     platform = sys.argv[4]
     content_number = sys.argv[5]
     transcript_path = sys.argv[6]
+
+    # IMPORTANT:
+    # Create the output directory BEFORE
+    # creating story_subtitles.srt.
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     analysis = load_analysis(
         analysis_path
