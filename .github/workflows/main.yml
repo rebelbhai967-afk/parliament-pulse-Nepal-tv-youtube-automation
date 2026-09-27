@@ -417,12 +417,12 @@ jobs:
 
           shutil.copy2(
               long_transcript,
-              "data/selected_long_transcript.json"
+              "data/long_subtitles.srt"
           )
 
           shutil.copy2(
               short_transcript,
-              "data/selected_short_transcript.json"
+              "data/short_subtitles.srt"
           )
 
           print(
