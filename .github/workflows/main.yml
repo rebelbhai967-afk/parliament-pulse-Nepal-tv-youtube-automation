@@ -131,7 +131,7 @@ jobs:
           print('ACTUAL VIDEO DOWNLOAD TEST PASSED')
           "
 
-      - name: Upload downloaded video as artifact
+      - name: Upload downloaded video
         uses: actions/upload-artifact@v4
         with:
           name: parliament-test-video
@@ -166,9 +166,54 @@ jobs:
           python src/analyze.py \
             data/test_video_transcript_clean.json \
             data/test_video_analysis.json \
-            10
+            2
 
-      - name: Upload clean Nepali transcript
+      - name: Create YouTube clip
+        run: |
+          python src/clip.py \
+            data/test_video.mp4 \
+            data/test_video_analysis.json \
+            output/youtube \
+            youtube \
+            1
+
+      - name: Create YouTube Shorts clip
+        run: |
+          python src/clip.py \
+            data/test_video.mp4 \
+            data/test_video_analysis.json \
+            output/youtube_shorts \
+            youtube_shorts \
+            1
+
+      - name: Create Facebook clip
+        run: |
+          python src/clip.py \
+            data/test_video.mp4 \
+            data/test_video_analysis.json \
+            output/facebook \
+            facebook \
+            1
+
+      - name: Create Instagram clip
+        run: |
+          python src/clip.py \
+            data/test_video.mp4 \
+            data/test_video_analysis.json \
+            output/instagram \
+            instagram \
+            1
+
+      - name: Create TikTok clip
+        run: |
+          python src/clip.py \
+            data/test_video.mp4 \
+            data/test_video_analysis.json \
+            output/tiktok \
+            tiktok \
+            1
+
+      - name: Upload clean transcript
         uses: actions/upload-artifact@v4
         with:
           name: parliament-nepali-transcript-clean
@@ -181,5 +226,13 @@ jobs:
         with:
           name: parliament-clip-analysis
           path: data/test_video_analysis.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload generated clips
+        uses: actions/upload-artifact@v4
+        with:
+          name: parliament-platform-clips
+          path: output/
           if-no-files-found: error
           retention-days: 7
