@@ -4,55 +4,58 @@ import sys
 from pathlib import Path
 
 
-SUPPORTED_PLATFORMS = {
+PLATFORMS = {
     "youtube": {
         "width": 1920,
         "height": 1080,
-        "cta": "Subscribe",
+        "cta": "SUBSCRIBE",
+        "vertical": False,
     },
     "youtube_shorts": {
         "width": 1080,
         "height": 1920,
-        "cta": "Subscribe",
+        "cta": "SUBSCRIBE",
+        "vertical": True,
     },
     "facebook": {
         "width": 1080,
         "height": 1920,
-        "cta": "Follow",
+        "cta": "FOLLOW",
+        "vertical": True,
     },
     "instagram": {
         "width": 1080,
         "height": 1920,
-        "cta": "Follow",
+        "cta": "FOLLOW",
+        "vertical": True,
     },
     "tiktok": {
         "width": 1080,
         "height": 1920,
-        "cta": "Follow",
+        "cta": "FOLLOW",
+        "vertical": True,
     },
 }
 
 
-def run_command(command):
+def run(command):
     print("")
-    print("Running:")
-    print(" ".join(str(item) for item in command))
-
+    print("Running FFmpeg...")
     subprocess.run(
         command,
         check=True
     )
 
 
-def get_candidates(analysis_path):
+def load_analysis(path):
     with open(
-        analysis_path,
+        path,
         "r",
         encoding="utf-8"
     ) as file:
-        analysis = json.load(file)
+        data = json.load(file)
 
-    candidates = analysis.get(
+    candidates = data.get(
         "candidates",
         []
     )
@@ -71,13 +74,7 @@ def create_clip(
     output_dir,
     platform,
     candidate_number=1,
-    logo_path=None
 ):
-    if platform not in SUPPORTED_PLATFORMS:
-        raise ValueError(
-            f"Unsupported platform: {platform}"
-        )
-
     video = Path(video_path)
     analysis = Path(analysis_path)
     output = Path(output_dir)
@@ -92,25 +89,19 @@ def create_clip(
             f"Analysis not found: {analysis}"
         )
 
-    output.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+    if platform not in PLATFORMS:
+        raise ValueError(
+            f"Unsupported platform: {platform}"
+        )
 
-    candidates = get_candidates(
+    candidates = load_analysis(
         analysis
     )
-
-    if candidate_number < 1:
-        raise ValueError(
-            "candidate_number must be >= 1"
-        )
 
     if candidate_number > len(candidates):
         raise ValueError(
             f"Candidate {candidate_number} "
-            f"does not exist. "
-            f"Available: {len(candidates)}"
+            f"does not exist."
         )
 
     candidate = candidates[
@@ -132,7 +123,7 @@ def create_clip(
             "Invalid clip duration."
         )
 
-    settings = SUPPORTED_PLATFORMS[
+    settings = PLATFORMS[
         platform
     ]
 
@@ -140,140 +131,193 @@ def create_clip(
     height = settings["height"]
     cta = settings["cta"]
 
-    filename = (
-        f"clip_{candidate_number:02d}_"
-        f"{platform}.mp4"
+    output.mkdir(
+        parents=True,
+        exist_ok=True
     )
 
-    output_file = output / filename
-
-    filters = []
-
-    # Scale and crop video to platform format.
-    filters.append(
-        "scale="
-        f"{width}:{height}:"
-        "force_original_aspect_ratio=increase"
+    logo = Path(
+        "assets/logo.png"
     )
 
-    filters.append(
-        f"crop={width}:{height}"
+    logo_exists = logo.exists()
+
+    output_file = (
+        output
+        / f"clip_{candidate_number:02d}_{platform}.mp4"
     )
 
-    # Add logo if available.
-    if logo_path:
-        logo = Path(logo_path)
+    # Base video.
+    if settings["vertical"]:
+        base_filter = (
+            f"scale={width}:{height}:"
+            "force_original_aspect_ratio=increase,"
+            f"crop={width}:{height}"
+        )
+    else:
+        base_filter = (
+            f"scale={width}:{height}:"
+            "force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+        )
 
-        if logo.exists():
-            print(
-                f"Using logo: {logo}"
-            )
+    # Branding text.
+    draw_brand = (
+        "drawtext="
+        "fontcolor=white:"
+        "fontsize=34:"
+        "fontweight=bold:"
+        "text='PARLIAMENT PULSE NEPAL TV':"
+        "x=40:"
+        "y=40:"
+        "box=1:"
+        "boxcolor=black@0.55:"
+        "boxborderw=12"
+    )
 
-            filter_complex = (
-                f"[0:v]"
-                f"scale={width}:{height}:"
-                "force_original_aspect_ratio=increase,"
-                f"crop={width}:{height}"
-                "[base];"
-                f"movie={logo}"
-                f",scale=220:-1"
-                "[logo];"
-                "[base][logo]"
-                "overlay="
-                f"W-w-40:40"
-                "[video]"
-            )
+    # Engagement CTA.
+    draw_cta = (
+        "drawtext="
+        "fontcolor=white:"
+        "fontsize=30:"
+        f"text='LIKE  |  COMMENT  |  SHARE  |  {cta}':"
+        "x=(w-text_w)/2:"
+        "y=h-90:"
+        "box=1:"
+        "boxcolor=black@0.65:"
+        "boxborderw=14"
+    )
 
-            command = [
-                "ffmpeg",
-                "-y",
-                "-ss",
-                str(start),
-                "-i",
-                str(video),
-                "-t",
-                str(duration),
-                "-filter_complex",
-                filter_complex,
-                "-map",
-                "[video]",
-                "-map",
-                "0:a?",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "23",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "128k",
-                "-movflags",
-                "+faststart",
-                str(output_file),
-            ]
+    video_filter = (
+        f"{base_filter},"
+        f"{draw_brand},"
+        f"{draw_cta}"
+    )
 
-            run_command(command)
+    if logo_exists:
 
-            print("")
-            print(
-                f"Created: {output_file}"
-            )
-            print(
-                f"Platform: {platform}"
-            )
-            print(
-                f"CTA: {cta}"
-            )
+        print(
+            f"Logo found: {logo}"
+        )
 
-            return output_file
+        filter_complex = (
+            f"[0:v]{video_filter}[base];"
+            f"[1:v]"
+            "scale=220:-1"
+            "[logo];"
+            "[base][logo]"
+            "overlay=W-w-35:35"
+            "[final]"
+        )
 
-    # Fallback without logo.
-    video_filter = ",".join(filters)
+        command = [
+            "ffmpeg",
+            "-y",
 
-    command = [
-        "ffmpeg",
-        "-y",
-        "-ss",
-        str(start),
-        "-i",
-        str(video),
-        "-t",
-        str(duration),
-        "-vf",
-        video_filter,
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a?",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "23",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-movflags",
-        "+faststart",
-        str(output_file),
-    ]
+            "-ss",
+            str(start),
 
-    run_command(command)
+            "-t",
+            str(duration),
+
+            "-i",
+            str(video),
+
+            "-i",
+            str(logo),
+
+            "-filter_complex",
+            filter_complex,
+
+            "-map",
+            "[final]",
+
+            "-map",
+            "0:a?",
+
+            "-c:v",
+            "libx264",
+
+            "-preset",
+            "veryfast",
+
+            "-crf",
+            "22",
+
+            "-c:a",
+            "aac",
+
+            "-b:a",
+            "128k",
+
+            "-movflags",
+            "+faststart",
+
+            str(output_file),
+        ]
+
+    else:
+
+        print(
+            "WARNING: assets/logo.png not found."
+        )
+
+        command = [
+            "ffmpeg",
+            "-y",
+
+            "-ss",
+            str(start),
+
+            "-t",
+            str(duration),
+
+            "-i",
+            str(video),
+
+            "-vf",
+            video_filter,
+
+            "-map",
+            "0:v:0",
+
+            "-map",
+            "0:a?",
+
+            "-c:v",
+            "libx264",
+
+            "-preset",
+            "veryfast",
+
+            "-crf",
+            "22",
+
+            "-c:a",
+            "aac",
+
+            "-b:a",
+            "128k",
+
+            "-movflags",
+            "+faststart",
+
+            str(output_file),
+        ]
+
+    run(command)
 
     print("")
-    print(
-        f"Created: {output_file}"
-    )
-    print(
-        f"Platform: {platform}"
-    )
-    print(
-        f"CTA: {cta}"
-    )
+    print("================================")
+    print("CLIP CREATED")
+    print("================================")
+    print(f"Platform : {platform}")
+    print(f"Start    : {start}s")
+    print(f"End      : {end}s")
+    print(f"CTA      : {cta}")
+    print(f"Logo     : {logo_exists}")
+    print(f"Output   : {output_file}")
+    print("================================")
 
     return output_file
 
@@ -285,21 +329,20 @@ if __name__ == "__main__":
             "Usage:"
         )
         print(
-            "python clip.py "
+            "python src/clip.py "
             "<video> "
             "<analysis_json> "
             "<output_dir> "
             "<platform> "
             "[candidate_number]"
         )
-        print("")
-        print(
-            "Platforms:"
-        )
 
-        for platform in SUPPORTED_PLATFORMS:
+        print("")
+        print("Platforms:")
+
+        for name in PLATFORMS:
             print(
-                f"  - {platform}"
+                f"  {name}"
             )
 
         sys.exit(1)
@@ -316,21 +359,10 @@ if __name__ == "__main__":
             sys.argv[5]
         )
 
-    logo = Path(
-        "assets/logo.png"
-    )
-
-    logo_path = (
-        str(logo)
-        if logo.exists()
-        else None
-    )
-
     create_clip(
         video_path=video_path,
         analysis_path=analysis_path,
         output_dir=output_dir,
         platform=platform,
         candidate_number=candidate_number,
-        logo_path=logo_path
     )
