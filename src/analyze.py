@@ -38,6 +38,34 @@ KEYWORDS = {
 }
 
 
+QUESTION_WORDS = [
+    "किन",
+    "के",
+    "कसरी",
+    "कहिले",
+    "कहाँ",
+    "कति",
+    "हुन्छ",
+    "गर्नुहुन्छ",
+    "बताउनुहोस्",
+]
+
+
+STRONG_PHRASES = [
+    "गम्भीर",
+    "आवश्यक",
+    "तत्काल",
+    "सरकारले",
+    "सरकारको",
+    "मन्त्रालयले",
+    "मन्त्रालयको",
+    "निर्णय",
+    "घोषणा",
+    "प्रस्ताव",
+    "प्रतिवेदन",
+]
+
+
 def clean_text(text: str) -> str:
     text = text.strip()
     text = re.sub(r"\s+", " ", text)
@@ -57,19 +85,7 @@ def keyword_score(text: str) -> int:
 def question_score(text: str) -> int:
     score = 0
 
-    question_words = [
-        "किन",
-        "के",
-        "कसरी",
-        "कहिले",
-        "कहाँ",
-        "कति",
-        "हुन्छ",
-        "गर्नुहुन्छ",
-        "बताउनुहोस्",
-    ]
-
-    for word in question_words:
+    for word in QUESTION_WORDS:
         if word in text:
             score += 2
 
@@ -82,21 +98,7 @@ def question_score(text: str) -> int:
 def statement_score(text: str) -> int:
     score = 0
 
-    strong_phrases = [
-        "गम्भीर",
-        "आवश्यक",
-        "तत्काल",
-        "सरकारले",
-        "सरकारको",
-        "मन्त्रालयले",
-        "मन्त्रालयको",
-        "निर्णय",
-        "घोषणा",
-        "प्रस्ताव",
-        "प्रतिवेदन",
-    ]
-
-    for phrase in strong_phrases:
+    for phrase in STRONG_PHRASES:
         if phrase in text:
             score += 2
 
@@ -129,8 +131,12 @@ def score_segment(segment: dict) -> dict:
     score += length_score(text)
 
     return {
-        "start": float(segment.get("start", 0)),
-        "end": float(segment.get("end", 0)),
+        "start": float(
+            segment.get("start", 0)
+        ),
+        "end": float(
+            segment.get("end", 0)
+        ),
         "nepali": text,
         "score": score,
     }
@@ -158,7 +164,6 @@ def build_clip(
     start = selected[0]["start"]
     end = selected[-1]["end"]
 
-    # Keep clips reasonably short.
     if end - start > 60:
         end = start + 60
 
@@ -184,13 +189,79 @@ def build_clip(
     }
 
 
+def overlap(
+    first: dict,
+    second: dict
+) -> bool:
+
+    return (
+        first["start"] < second["end"]
+        and first["end"] > second["start"]
+    )
+
+
+def select_best_candidates(
+    scored: list
+) -> list:
+
+    candidates = []
+
+    for index, segment in enumerate(
+        scored
+    ):
+
+        if segment["score"] <= 0:
+            continue
+
+        candidate = build_clip(
+            scored,
+            index
+        )
+
+        candidates.append(
+            candidate
+        )
+
+    candidates.sort(
+        key=lambda item: (
+            item["score"],
+            item["duration"]
+        ),
+        reverse=True
+    )
+
+    selected = []
+
+    for candidate in candidates:
+
+        if any(
+            overlap(
+                candidate,
+                existing
+            )
+            for existing in selected
+        ):
+            continue
+
+        selected.append(
+            candidate
+        )
+
+    return selected
+
+
 def analyze_transcript(
     input_path: str,
-    output_path: str,
-    top_n: int = 2
+    output_path: str
 ):
-    input_file = Path(input_path)
-    output_file = Path(output_path)
+
+    input_file = Path(
+        input_path
+    )
+
+    output_file = Path(
+        output_path
+    )
 
     if not input_file.exists():
         raise FileNotFoundError(
@@ -202,6 +273,7 @@ def analyze_transcript(
         "r",
         encoding="utf-8"
     ) as file:
+
         transcript = json.load(file)
 
     raw_segments = transcript.get(
@@ -217,7 +289,10 @@ def analyze_transcript(
     scored = []
 
     for segment in raw_segments:
-        item = score_segment(segment)
+
+        item = score_segment(
+            segment
+        )
 
         if item["nepali"]:
             scored.append(item)
@@ -227,68 +302,124 @@ def analyze_transcript(
             "No usable transcript segments found."
         )
 
-    candidates = []
-
-    for index, segment in enumerate(scored):
-
-        if segment["score"] <= 0:
-            continue
-
-        candidate = build_clip(
-            scored,
-            index
-        )
-
-        candidates.append(candidate)
-
-    # Sort highest score first.
-    candidates.sort(
-        key=lambda item: (
-            item["score"],
-            item["duration"]
-        ),
-        reverse=True
+    candidates = select_best_candidates(
+        scored
     )
 
-    # Remove overlapping candidates.
-    selected = []
+    if not candidates:
+        raise RuntimeError(
+            "No important moments found."
+        )
+
+    # ------------------------------------------------
+    # LONG VIDEO
+    # ------------------------------------------------
+    #
+    # Highest-scoring important Parliament moment
+    # becomes the main/long-video topic.
+    #
+
+    long_video = candidates[0].copy()
+
+    long_video["type"] = "long"
+    long_video["rank"] = 1
+
+    # ------------------------------------------------
+    # SHORT / REEL
+    # ------------------------------------------------
+    #
+    # IMPORTANT:
+    # Short cannot overlap with the long video.
+    #
+    # We deliberately select a different moment.
+    #
+
+    short_video = None
+
+    for candidate in candidates[1:]:
+
+        if not overlap(
+            candidate,
+            long_video
+        ):
+
+            short_video = candidate.copy()
+            break
+
+    # If there is no second independent moment,
+    # do NOT reuse the long-video clip.
+    if short_video:
+
+        short_video["type"] = "short"
+        short_video["rank"] = 1
+
+    # ------------------------------------------------
+    # Additional candidates
+    # ------------------------------------------------
+
+    alternative_candidates = []
 
     for candidate in candidates:
 
-        overlaps = False
-
-        for existing in selected:
-
-            if (
-                candidate["start"]
-                < existing["end"]
-                and candidate["end"]
-                > existing["start"]
-            ):
-                overlaps = True
-                break
-
-        if overlaps:
+        if overlap(
+            candidate,
+            long_video
+        ):
             continue
 
-        selected.append(candidate)
+        if short_video and overlap(
+            candidate,
+            short_video
+        ):
+            continue
 
-        if len(selected) >= top_n:
+        alternative_candidates.append(
+            candidate
+        )
+
+        if len(
+            alternative_candidates
+        ) >= 5:
+
             break
 
-    # If fewer than top_n candidates exist,
-    # keep the available candidates.
-    for rank, candidate in enumerate(
-        selected,
-        start=1
-    ):
-        candidate["rank"] = rank
+    # ------------------------------------------------
+    # FINAL RESULT
+    # ------------------------------------------------
 
     result = {
-        "video": transcript.get("video"),
-        "model": "keyword-scoring-v2",
-        "candidate_count": len(selected),
-        "candidates": selected,
+        "video": transcript.get(
+            "video"
+        ),
+
+        "model": (
+            "parliament-story-selector-v3"
+        ),
+
+        "selection_rules": {
+            "long_video": (
+                "Highest scoring important "
+                "Parliament moment."
+            ),
+            "short_video": (
+                "Separate important moment "
+                "that does not overlap with "
+                "the long video."
+            ),
+            "avoid_duplicate_story": True
+        },
+
+        "long_video": long_video,
+
+        "short_video": short_video,
+
+        "alternatives": (
+            alternative_candidates
+        ),
+
+        "candidate_count": len(
+            candidates
+        )
     }
 
     output_file.parent.mkdir(
@@ -301,6 +432,7 @@ def analyze_transcript(
         "w",
         encoding="utf-8"
     ) as file:
+
         json.dump(
             result,
             file,
@@ -308,57 +440,108 @@ def analyze_transcript(
             indent=2
         )
 
+    # ------------------------------------------------
+    # PRINT RESULTS
+    # ------------------------------------------------
+
+    print("")
+    print(
+        "===================================="
+    )
+    print(
+        "PARLIAMENT STORY ANALYSIS"
+    )
+    print(
+        "===================================="
+    )
+
+    print("")
+    print(
+        "LONG VIDEO"
+    )
+    print(
+        "------------------------------------"
+    )
+
+    print(
+        f"Score: {long_video['score']}"
+    )
+
+    print(
+        f"Time: "
+        f"{long_video['start']}s - "
+        f"{long_video['end']}s"
+    )
+
+    print(
+        long_video["nepali"][:700]
+    )
+
+    print("")
+
+    if short_video:
+
+        print(
+            "SHORT / REEL"
+        )
+
+        print(
+            "------------------------------------"
+        )
+
+        print(
+            f"Score: {short_video['score']}"
+        )
+
+        print(
+            f"Time: "
+            f"{short_video['start']}s - "
+            f"{short_video['end']}s"
+        )
+
+        print(
+            short_video["nepali"][:700]
+        )
+
+    else:
+
+        print(
+            "SHORT / REEL"
+        )
+
+        print(
+            "------------------------------------"
+        )
+
+        print(
+            "No separate story found."
+        )
+
+        print(
+            "System will NOT reuse the "
+            "long-video moment."
+        )
+
+    print("")
     print(
         f"Analysis saved to: {output_file}"
     )
 
-    print(
-        f"Found {len(selected)} clip candidates"
-    )
-
-    for candidate in selected:
-
-        print("")
-        print(
-            f"Rank {candidate['rank']} "
-            f"| Score {candidate['score']}"
-        )
-
-        print(
-            f"{candidate['start']}s - "
-            f"{candidate['end']}s "
-            f"({candidate['duration']}s)"
-        )
-
-        print(
-            candidate["nepali"][:500]
-        )
-
 
 if __name__ == "__main__":
 
-    if len(sys.argv) not in [3, 4]:
-        print(
-            "Usage:"
-        )
+    if len(sys.argv) != 3:
+
+        print("Usage:")
         print(
             "python analyze.py "
             "<input_json> "
-            "<output_json> "
-            "[top_n]"
+            "<output_json>"
         )
+
         sys.exit(1)
 
-    input_path = sys.argv[1]
-    output_path = sys.argv[2]
-
-    top_n = 2
-
-    if len(sys.argv) == 4:
-        top_n = int(sys.argv[3])
-
     analyze_transcript(
-        input_path,
-        output_path,
-        top_n
+        sys.argv[1],
+        sys.argv[2]
     )
