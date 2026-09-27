@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  daily-parliament-automation:
     runs-on: ubuntu-latest
 
     steps:
@@ -12,416 +12,652 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
 
       - name: Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
 
+      # --------------------------------------------------
+      # 1. DISCOVER PARLIAMENT COLLECTIONS
+      # --------------------------------------------------
 
-      - name: Test discovery
+      - name: Discover Parliament collections
         run: |
+          mkdir -p data
           python src/discover.py data/videos.json
 
-
-      - name: Test Parliament video detection
+      - name: Show discovered collections
         run: |
           python -c "
           import json
-          from src.download import (
-              get_session,
-              get_video_pages,
-              get_video_source
-          )
 
           with open(
               'data/videos.json',
-              'r',
-              encoding='utf-8'
-          ) as file:
-              collections = json.load(file)
-
-          if not collections:
-              raise RuntimeError(
-                  'No Parliament collections found.'
-              )
-
-          session = get_session()
-          collection = collections[0]
-
-          print('Testing collection:')
-          print(collection['url'])
-
-          videos = get_video_pages(
-              collection['url'],
-              session
-          )
-
-          print(
-              f'Found {len(videos)} individual videos'
-          )
-
-          if not videos:
-              raise RuntimeError(
-                  'No individual videos found.'
-              )
-
-          video = videos[0]
-
-          print('')
-          print('Selected video:')
-          print(video['url'])
-
-          source = get_video_source(
-              video['url'],
-              session
-          )
-
-          if not source:
-              raise RuntimeError(
-                  'Video source not found.'
-              )
-
-          print('')
-          print('SOURCE FOUND:')
-          print(source)
-          "
-
-
-      - name: Download Parliament video
-        run: |
-          python -c "
-          import json
-          from pathlib import Path
-
-          from src.download import (
-              get_session,
-              get_video_pages,
-              get_video_source,
-              download_file
-          )
-
-          with open(
-              'data/videos.json',
-              'r',
-              encoding='utf-8'
-          ) as file:
-              collections = json.load(file)
-
-          if not collections:
-              raise RuntimeError(
-                  'No Parliament collections found.'
-              )
-
-          session = get_session()
-          collection = collections[0]
-
-          videos = get_video_pages(
-              collection['url'],
-              session
-          )
-
-          if not videos:
-              raise RuntimeError(
-                  'No individual videos found.'
-              )
-
-          video = videos[0]
-
-          print('Selected video:')
-          print(video['url'])
-
-          source = get_video_source(
-              video['url'],
-              session
-          )
-
-          if not source:
-              raise RuntimeError(
-                  'Video source not found.'
-              )
-
-          output = Path(
-              'data/test_video.mp4'
-          )
-
-          print('Downloading video...')
-
-          download_file(
-              source,
-              output,
-              session
-          )
-
-          if not output.exists():
-              raise RuntimeError(
-                  'Downloaded video does not exist.'
-              )
-
-          size = output.stat().st_size
-
-          print('')
-          print(
-              f'Downloaded: {output}'
-          )
-
-          print(
-              f'File size: '
-              f'{size / (1024 * 1024):.2f} MB'
-          )
-
-          if size < 10000:
-              raise RuntimeError(
-                  'Downloaded video is unexpectedly small.'
-              )
-
-          print('')
-          print(
-              'VIDEO DOWNLOAD PASSED'
-          )
-          "
-
-
-      - name: Upload downloaded video
-        uses: actions/upload-artifact@v4
-        with:
-          name: parliament-test-video
-          path: data/test_video.mp4
-          if-no-files-found: error
-          retention-days: 7
-
-
-      - name: Extract clean audio
-        run: |
-          ffmpeg \
-            -y \
-            -i data/test_video.mp4 \
-            -vn \
-            -ac 1 \
-            -ar 16000 \
-            -c:a pcm_s16le \
-            data/test_audio.wav
-
-
-      - name: Transcribe Nepali audio
-        run: |
-          python src/transcribe.py \
-            data/test_audio.wav \
-            data/test_video_transcript.json
-
-
-      - name: Clean transcript
-        run: |
-          python src/clean_transcript.py \
-            data/test_video_transcript.json \
-            data/test_video_transcript_clean.json
-
-
-      - name: Analyze separate Parliament stories
-        run: |
-          python src/analyze.py \
-            data/test_video_transcript_clean.json \
-            data/test_video_analysis.json
-
-
-      - name: Show selected Long and Short stories
-        run: |
-          python -c "
-          import json
-
-          with open(
-              'data/test_video_analysis.json',
               'r',
               encoding='utf-8'
           ) as file:
               data = json.load(file)
 
           print('')
-          print(
-              '===================================='
-          )
-          print(
-              'SELECTED DAILY CONTENT'
-          )
-          print(
-              '===================================='
-          )
+          print('====================================')
+          print('DISCOVERED PARLIAMENT COLLECTIONS')
+          print('====================================')
 
-          long_video = data.get(
-              'long_video'
-          )
+          for index, item in enumerate(data, start=1):
+              print(f'{index}. {item.get(\"title\")}')
+              print(f'   {item.get(\"url\")}')
 
-          short_video = data.get(
-              'short_video'
+          print('')
+          print(f'Total collections: {len(data)}')
+
+          if not data:
+              raise RuntimeError(
+                  'No Parliament collections found.'
+              )
+          "
+
+      # --------------------------------------------------
+      # 2. DOWNLOAD MULTIPLE PARLIAMENT VIDEOS
+      # --------------------------------------------------
+
+      - name: Download multiple Parliament videos
+        run: |
+          python -c "
+          import json
+          from src.download import download_collection
+
+          with open(
+              'data/videos.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              collections = json.load(file)
+
+          if not collections:
+              raise RuntimeError(
+                  'No Parliament collections available.'
+              )
+
+          collection = collections[0]
+
+          print('')
+          print('====================================')
+          print('SELECTED PARLIAMENT COLLECTION')
+          print('====================================')
+          print(collection.get('title'))
+          print(collection.get('url'))
+
+          download_collection(
+              collection['url'],
+              'data/videos',
+              max_videos=10
+          )
+          "
+
+      - name: Show downloaded videos
+        run: |
+          echo "Downloaded Parliament videos:"
+          find data/videos -maxdepth 1 -type f -name "video_*.mp4" -print
+
+      - name: Verify downloaded videos
+        run: |
+          python -c "
+          from pathlib import Path
+
+          videos = sorted(
+              Path('data/videos').glob('video_*.mp4')
           )
 
           print('')
-          print('LONG VIDEO:')
+          print('====================================')
+          print('DOWNLOADED VIDEO CHECK')
+          print('====================================')
 
-          if long_video:
+          for video in videos:
+              size = video.stat().st_size
               print(
-                  f\"Score: {long_video['score']}\"
+                  f'{video}: '
+                  f'{size / (1024 * 1024):.2f} MB'
+              )
+
+          if not videos:
+              raise RuntimeError(
+                  'No Parliament videos downloaded.'
+              )
+
+          print('')
+          print(f'Total videos: {len(videos)}')
+          "
+
+      # --------------------------------------------------
+      # 3. BATCH NEPALI TRANSCRIPTION
+      # --------------------------------------------------
+
+      - name: Transcribe all Parliament videos
+        run: |
+          mkdir -p data/transcripts
+
+          python src/batch_transcribe.py \
+            data/videos \
+            data/transcripts
+
+      - name: Verify transcripts
+        run: |
+          python -c "
+          from pathlib import Path
+
+          files = sorted(
+              Path('data/transcripts').glob('video_*.json')
+          )
+
+          print('')
+          print('====================================')
+          print('TRANSCRIPTION CHECK')
+          print('====================================')
+
+          for file in files:
+              print(file)
+
+          if not files:
+              raise RuntimeError(
+                  'No transcripts were created.'
+              )
+
+          print('')
+          print(f'Transcripts: {len(files)}')
+          "
+
+      # --------------------------------------------------
+      # 4. CLEAN ALL TRANSCRIPTS
+      # --------------------------------------------------
+
+      - name: Clean all transcripts
+        run: |
+          python src/batch_clean.py \
+            data/transcripts \
+            data/clean_transcripts
+
+      - name: Verify cleaned transcripts
+        run: |
+          python -c "
+          from pathlib import Path
+
+          files = sorted(
+              Path('data/clean_transcripts')
+              .glob('video_*.json')
+          )
+
+          print('')
+          print('====================================')
+          print('CLEAN TRANSCRIPT CHECK')
+          print('====================================')
+
+          for file in files:
+              print(file)
+
+          if not files:
+              raise RuntimeError(
+                  'No cleaned transcripts found.'
+              )
+
+          print('')
+          print(f'Clean transcripts: {len(files)}')
+          "
+
+      # --------------------------------------------------
+      # 5. SELECT DAILY LONG + SEPARATE SHORT STORIES
+      # --------------------------------------------------
+
+      - name: Analyze all Parliament stories
+        run: |
+          python src/batch_analyze.py \
+            data/clean_transcripts \
+            data/daily_selection.json
+
+      - name: Show daily story selection
+        run: |
+          python -c "
+          import json
+
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
+
+          long_story = data.get('long_video')
+          short_story = data.get('short_video')
+
+          print('')
+          print('====================================')
+          print('DAILY PARLIAMENT STORY SELECTION')
+          print('====================================')
+
+          print('')
+          print('LONG VIDEO')
+          print('------------------------------------')
+
+          if long_story:
+              print(
+                  f'Video: {long_story.get(\"video\")}'
               )
               print(
-                  f\"Time: {long_video['start']} - {long_video['end']}\"
+                  f'Start: {long_story.get(\"start\")}'
               )
               print(
-                  long_video['nepali']
+                  f'End: {long_story.get(\"end\")}'
+              )
+              print(
+                  f'Score: {long_story.get(\"score\")}'
+              )
+              print(
+                  f'Text: {long_story.get(\"text\")}'
               )
           else:
-              print(
-                  'No long-video story found.'
-              )
+              print('No long story selected.')
 
           print('')
-          print('SHORT / REEL:')
+          print('SHORT / REEL')
+          print('------------------------------------')
 
-          if short_video:
+          if short_story:
               print(
-                  f\"Score: {short_video['score']}\"
+                  f'Video: {short_story.get(\"video\")}'
               )
               print(
-                  f\"Time: {short_video['start']} - {short_video['end']}\"
+                  f'Start: {short_story.get(\"start\")}'
               )
               print(
-                  short_video['nepali']
+                  f'End: {short_story.get(\"end\")}'
+              )
+              print(
+                  f'Score: {short_story.get(\"score\")}'
+              )
+              print(
+                  f'Text: {short_story.get(\"text\")}'
               )
           else:
               print(
                   'No separate short story found.'
               )
+
+          if not long_story:
+              raise RuntimeError(
+                  'Long story was not selected.'
+              )
+
+          if not short_story:
+              print('')
+              print(
+                  'WARNING: Separate short story '
+                  'was not found.'
+              )
           "
 
+      # --------------------------------------------------
+      # 6. ENFORCE DIFFERENT VIDEO RULE
+      # --------------------------------------------------
 
-      - name: Create English subtitles
+      - name: Verify Long and Short use different videos
         run: |
-          python src/translate.py \
-            data/test_video_transcript_clean.json \
-            data/test_video_subtitles.srt
+          python -c "
+          import json
 
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
 
-      - name: Upload English subtitles
-        uses: actions/upload-artifact@v4
-        with:
-          name: parliament-english-subtitles
-          path: data/test_video_subtitles.srt
-          if-no-files-found: error
-          retention-days: 7
+          long_story = data.get('long_video')
+          short_story = data.get('short_video')
 
+          if not long_story:
+              raise RuntimeError(
+                  'Long story is missing.'
+              )
+
+          if not short_story:
+              print(
+                  'No short story available. '
+                  'Skipping different-video check.'
+              )
+              raise SystemExit(0)
+
+          long_video = long_story.get('video')
+          short_video = short_story.get('video')
+
+          print(f'Long video:  {long_video}')
+          print(f'Short video: {short_video}')
+
+          if long_video == short_video:
+              raise RuntimeError(
+                  'Long and Short are from the SAME video. '
+                  'This is not allowed.'
+              )
+
+          print('')
+          print(
+              'PASSED: Long and Short use '
+              'different Parliament videos.'
+          )
+          "
+
+      # --------------------------------------------------
+      # 7. CREATE LONG YOUTUBE VIDEO
+      # --------------------------------------------------
 
       - name: Create Long YouTube video
         run: |
+          python -c "
+          import json
+          from pathlib import Path
+
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
+
+          story = data['long_video']
+          transcript = story.get('transcript')
+
+          if not transcript:
+              raise RuntimeError(
+                  'Long story transcript path missing.'
+              )
+
+          print(
+              f'Long transcript: {transcript}'
+          )
+          "
+
+          LONG_TRANSCRIPT=$(python -c "
+          import json
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
+          print(data['long_video']['transcript'])
+          ")
+
           python src/clip.py \
-            data/test_video.mp4 \
-            data/test_video_analysis.json \
+            data/videos/video_001.mp4 \
+            data/daily_selection.json \
             output/youtube \
             youtube \
-            1
+            1 \
+            "$LONG_TRANSCRIPT"
 
+      # --------------------------------------------------
+      # 8. CREATE SEPARATE YOUTUBE SHORT
+      # --------------------------------------------------
 
       - name: Create Separate YouTube Short
+        if: ${{ success() }}
         run: |
+          SHORT_TRANSCRIPT=$(python -c "
+          import json
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
+
+          story = data.get('short_video')
+
+          if not story:
+              print('')
+              raise SystemExit(0)
+
+          print(story['transcript'])
+          ")
+
+          if [ -z "$SHORT_TRANSCRIPT" ]; then
+            echo "No separate short story. Skipping."
+            exit 0
+          fi
+
           python src/clip.py \
-            data/test_video.mp4 \
-            data/test_video_analysis.json \
+            data/videos/video_001.mp4 \
+            data/daily_selection.json \
             output/youtube_shorts \
             youtube_shorts \
-            2
+            2 \
+            "$SHORT_TRANSCRIPT"
 
+      # --------------------------------------------------
+      # 9. CREATE FACEBOOK LONG
+      # --------------------------------------------------
 
       - name: Create Long Facebook video
         run: |
+          LONG_TRANSCRIPT=$(python -c "
+          import json
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
+          print(data['long_video']['transcript'])
+          ")
+
           python src/clip.py \
-            data/test_video.mp4 \
-            data/test_video_analysis.json \
+            data/videos/video_001.mp4 \
+            data/daily_selection.json \
             output/facebook \
             facebook \
-            1
+            1 \
+            "$LONG_TRANSCRIPT"
 
+      # --------------------------------------------------
+      # 10. FACEBOOK REEL
+      # --------------------------------------------------
 
       - name: Create Separate Facebook Reel
         run: |
-          python src/clip.py \
-            data/test_video.mp4 \
-            data/test_video_analysis.json \
-            output/facebook_reels \
-            facebook \
-            2
+          SHORT_TRANSCRIPT=$(python -c "
+          import json
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
 
+          story = data.get('short_video')
+
+          if story:
+              print(story['transcript'])
+          ")
+
+          if [ -z "$SHORT_TRANSCRIPT" ]; then
+            echo "No separate Reel story. Skipping."
+            exit 0
+          fi
+
+          python src/clip.py \
+            data/videos/video_001.mp4 \
+            data/daily_selection.json \
+            output/facebook_reels \
+            facebook_reels \
+            2 \
+            "$SHORT_TRANSCRIPT"
+
+      # --------------------------------------------------
+      # 11. INSTAGRAM LONG
+      # --------------------------------------------------
 
       - name: Create Long Instagram video
         run: |
+          LONG_TRANSCRIPT=$(python -c "
+          import json
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
+          print(data['long_video']['transcript'])
+          ")
+
           python src/clip.py \
-            data/test_video.mp4 \
-            data/test_video_analysis.json \
+            data/videos/video_001.mp4 \
+            data/daily_selection.json \
             output/instagram \
             instagram \
-            1
+            1 \
+            "$LONG_TRANSCRIPT"
 
+      # --------------------------------------------------
+      # 12. INSTAGRAM REEL
+      # --------------------------------------------------
 
       - name: Create Separate Instagram Reel
         run: |
-          python src/clip.py \
-            data/test_video.mp4 \
-            data/test_video_analysis.json \
-            output/instagram_reels \
-            instagram \
-            2
+          SHORT_TRANSCRIPT=$(python -c "
+          import json
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
 
+          story = data.get('short_video')
+
+          if story:
+              print(story['transcript'])
+          ")
+
+          if [ -z "$SHORT_TRANSCRIPT" ]; then
+            echo "No separate Instagram Reel. Skipping."
+            exit 0
+          fi
+
+          python src/clip.py \
+            data/videos/video_001.mp4 \
+            data/daily_selection.json \
+            output/instagram_reels \
+            instagram_reels \
+            2 \
+            "$SHORT_TRANSCRIPT"
+
+      # --------------------------------------------------
+      # 13. TIKTOK LONG
+      # --------------------------------------------------
 
       - name: Create Long TikTok video
         run: |
+          LONG_TRANSCRIPT=$(python -c "
+          import json
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
+          print(data['long_video']['transcript'])
+          ")
+
           python src/clip.py \
-            data/test_video.mp4 \
-            data/test_video_analysis.json \
+            data/videos/video_001.mp4 \
+            data/daily_selection.json \
             output/tiktok \
             tiktok \
-            1
+            1 \
+            "$LONG_TRANSCRIPT"
 
+      # --------------------------------------------------
+      # 14. TIKTOK SHORT
+      # --------------------------------------------------
 
       - name: Create Separate TikTok Short
         run: |
+          SHORT_TRANSCRIPT=$(python -c "
+          import json
+          with open(
+              'data/daily_selection.json',
+              'r',
+              encoding='utf-8'
+          ) as file:
+              data = json.load(file)
+
+          story = data.get('short_video')
+
+          if story:
+              print(story['transcript'])
+          ")
+
+          if [ -z "$SHORT_TRANSCRIPT" ]; then
+            echo "No separate TikTok story. Skipping."
+            exit 0
+          fi
+
           python src/clip.py \
-            data/test_video.mp4 \
-            data/test_video_analysis.json \
+            data/videos/video_001.mp4 \
+            data/daily_selection.json \
             output/tiktok_shorts \
             tiktok \
-            2
+            2 \
+            "$SHORT_TRANSCRIPT"
 
+      # --------------------------------------------------
+      # 15. UPLOAD ARTIFACTS
+      # --------------------------------------------------
 
-      - name: Upload clean transcript
+      - name: Upload downloaded Parliament videos
         uses: actions/upload-artifact@v4
         with:
-          name: parliament-nepali-transcript-clean
-          path: data/test_video_transcript_clean.json
+          name: parliament-downloaded-videos
+          path: data/videos/
           if-no-files-found: error
           retention-days: 7
 
-
-      - name: Upload clip analysis
+      - name: Upload transcripts
         uses: actions/upload-artifact@v4
         with:
-          name: parliament-clip-analysis
-          path: data/test_video_analysis.json
+          name: parliament-transcripts
+          path: data/transcripts/
           if-no-files-found: error
           retention-days: 7
 
-
-      - name: Upload generated clips
+      - name: Upload cleaned transcripts
         uses: actions/upload-artifact@v4
         with:
-          name: parliament-platform-clips
+          name: parliament-clean-transcripts
+          path: data/clean_transcripts/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload daily story selection
+        uses: actions/upload-artifact@v4
+        with:
+          name: parliament-daily-selection
+          path: data/daily_selection.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload generated platform clips
+        uses: actions/upload-artifact@v4
+        with:
+          name: parliament-daily-platform-clips
           path: output/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
