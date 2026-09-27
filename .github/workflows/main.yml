@@ -392,14 +392,12 @@ jobs:
 
           if not long_transcript.exists():
               raise RuntimeError(
-                  f"Long transcript missing: "
-                  f"{long_transcript}"
+                  f"Long transcript missing: {long_transcript}"
               )
 
           if not short_transcript.exists():
               raise RuntimeError(
-                  f"Short transcript missing: "
-                  f"{short_transcript}"
+                  f"Short transcript missing: {short_transcript}"
               )
 
           Path("data").mkdir(
@@ -417,6 +415,16 @@ jobs:
               "data/selected_short.mp4"
           )
 
+          shutil.copy2(
+              long_transcript,
+              "data/selected_long_transcript.json"
+          )
+
+          shutil.copy2(
+              short_transcript,
+              "data/selected_short_transcript.json"
+          )
+
           print(
               "Selected Long:",
               long_video
@@ -425,6 +433,16 @@ jobs:
           print(
               "Selected Short:",
               short_video
+          )
+
+          print(
+              "Long transcript:",
+              long_transcript
+          )
+
+          print(
+              "Short transcript:",
+              short_transcript
           )
           PY
 
@@ -563,10 +581,6 @@ jobs:
               )
           PY
 
-      # ==========================================
-      # LONG YOUTUBE
-      # ==========================================
-
       - name: Create Long YouTube video
         run: |
           python src/clip.py \
@@ -575,11 +589,7 @@ jobs:
             output/youtube \
             youtube \
             1 \
-            data/long_subtitles.srt
-
-      # ==========================================
-      # SEPARATE YOUTUBE SHORT
-      # ==========================================
+            data/selected_long_transcript.json
 
       - name: Create Separate YouTube Short
         run: |
@@ -589,11 +599,7 @@ jobs:
             output/youtube_shorts \
             youtube_shorts \
             2 \
-            data/short_subtitles.srt
-
-      # ==========================================
-      # LONG FACEBOOK
-      # ==========================================
+            data/selected_short_transcript.json
 
       - name: Create Long Facebook video
         run: |
@@ -603,11 +609,7 @@ jobs:
             output/facebook \
             facebook \
             1 \
-            data/long_subtitles.srt
-
-      # ==========================================
-      # SEPARATE FACEBOOK REEL
-      # ==========================================
+            data/selected_long_transcript.json
 
       - name: Create Separate Facebook Reel
         run: |
@@ -617,11 +619,7 @@ jobs:
             output/facebook_reels \
             facebook \
             2 \
-            data/short_subtitles.srt
-
-      # ==========================================
-      # LONG INSTAGRAM
-      # ==========================================
+            data/selected_short_transcript.json
 
       - name: Create Long Instagram video
         run: |
@@ -631,11 +629,7 @@ jobs:
             output/instagram \
             instagram \
             1 \
-            data/long_subtitles.srt
-
-      # ==========================================
-      # SEPARATE INSTAGRAM REEL
-      # ==========================================
+            data/selected_long_transcript.json
 
       - name: Create Separate Instagram Reel
         run: |
@@ -645,11 +639,7 @@ jobs:
             output/instagram_reels \
             instagram \
             2 \
-            data/short_subtitles.srt
-
-      # ==========================================
-      # LONG TIKTOK
-      # ==========================================
+            data/selected_short_transcript.json
 
       - name: Create Long TikTok video
         run: |
@@ -659,11 +649,7 @@ jobs:
             output/tiktok \
             tiktok \
             1 \
-            data/long_subtitles.srt
-
-      # ==========================================
-      # SEPARATE TIKTOK
-      # ==========================================
+            data/selected_long_transcript.json
 
       - name: Create Separate TikTok video
         run: |
@@ -673,11 +659,7 @@ jobs:
             output/tiktok_shorts \
             tiktok \
             2 \
-            data/short_subtitles.srt
-
-      # ==========================================
-      # VERIFY OUTPUT
-      # ==========================================
+            data/selected_short_transcript.json
 
       - name: Verify generated clips
         run: |
@@ -693,10 +675,6 @@ jobs:
             echo "Not enough clips generated."
             exit 1
           fi
-
-      # ==========================================
-      # ARTIFACTS
-      # ==========================================
 
       - name: Upload daily selection
         uses: actions/upload-artifact@v4
