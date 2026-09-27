@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -84,20 +85,145 @@ def get_story_times(story):
     return start, end
 
 
-def create_story_subtitles(
+def format_srt_time(seconds):
+    seconds = max(0, float(seconds))
+
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+
+    millis = int(
+        round(
+            (seconds - int(seconds)) * 1000
+        )
+    )
+
+    if millis >= 1000:
+        secs += 1
+        millis -= 1000
+
+    if secs >= 60:
+        minutes += 1
+        secs -= 60
+
+    if minutes >= 60:
+        hours += 1
+        minutes -= 60
+
+    return (
+        f"{hours:02d}:"
+        f"{minutes:02d}:"
+        f"{secs:02d},"
+        f"{millis:03d}"
+    )
+
+
+def parse_srt_time(value):
+    value = value.strip().replace(".", ",")
+
+    parts = value.split(":")
+    if len(parts) != 3:
+        raise ValueError(
+            f"Invalid SRT timestamp: {value}"
+        )
+
+    hours = int(parts[0])
+    minutes = int(parts[1])
+
+    seconds_part = parts[2]
+    seconds, millis = seconds_part.split(",")
+
+    return (
+        hours * 3600
+        + minutes * 60
+        + int(seconds)
+        + int(millis) / 1000
+    )
+
+
+def parse_srt(srt_path):
+    """
+    Parse an SRT file into:
+    [(start_seconds, end_seconds, text), ...]
+    """
+
+    path = Path(srt_path)
+
+    with open(
+        path,
+        "r",
+        encoding="utf-8-sig"
+    ) as file:
+        content = file.read()
+
+    blocks = re.split(
+        r"\n\s*\n",
+        content.strip()
+    )
+
+    subtitles = []
+
+    for block in blocks:
+        lines = [
+            line.strip()
+            for line in block.splitlines()
+            if line.strip()
+        ]
+
+        if len(lines) < 3:
+            continue
+
+        timing_index = None
+
+        for index, line in enumerate(lines):
+            if "-->" in line:
+                timing_index = index
+                break
+
+        if timing_index is None:
+            continue
+
+        start_text, end_text = [
+            item.strip()
+            for item in lines[timing_index].split("-->", 1)
+        ]
+
+        try:
+            start = parse_srt_time(start_text)
+            end = parse_srt_time(
+                end_text.split(" ", 1)[0]
+            )
+        except ValueError:
+            continue
+
+        text = " ".join(
+            lines[timing_index + 1:]
+        ).strip()
+
+        if not text or end <= start:
+            continue
+
+        subtitles.append(
+            (start, end, text)
+        )
+
+    return subtitles
+
+
+def create_story_subtitles_from_json(
     story,
     transcript_path,
     output_path
 ):
-    if not story:
-        return False
+    """
+    Create clip-relative subtitles from a transcript JSON.
+
+    This is retained as a fallback for Nepali transcripts.
+    """
 
     transcript_file = Path(transcript_path)
     output_file = Path(output_path)
 
-    # IMPORTANT:
-    # The subtitle file is created BEFORE create_clip(),
-    # so its parent directory must already exist here.
     output_file.parent.mkdir(
         parents=True,
         exist_ok=True
@@ -123,12 +249,13 @@ def create_story_subtitles(
 
     subtitles = []
 
-    for index, segment in enumerate(
-        transcript.get("segments", []),
-        start=1
-    ):
-        start = float(segment.get("start", 0))
-        end = float(segment.get("end", 0))
+    for segment in transcript.get("segments", []):
+        start = float(
+            segment.get("start", 0)
+        )
+        end = float(
+            segment.get("end", 0)
+        )
 
         text = str(
             segment.get("english")
@@ -166,18 +293,94 @@ def create_story_subtitles(
             )
         )
 
+    return write_srt(
+        subtitles,
+        output_file
+    )
+
+
+def create_story_subtitles_from_srt(
+    story,
+    srt_path,
+    output_path
+):
+    """
+    Take full-video translated SRT subtitles,
+    keep only the selected story range, and shift
+    timestamps so they start at 00:00 for the clip.
+    """
+
+    srt_file = Path(srt_path)
+    output_file = Path(output_path)
+
+    output_file.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    if not srt_file.exists():
+        print(
+            f"SRT not found: {srt_file}"
+        )
+        return False
+
+    clip_start, clip_end = get_story_times(story)
+
+    if clip_start is None:
+        return False
+
+    subtitles = []
+
+    for start, end, text in parse_srt(
+        srt_file
+    ):
+        if end <= clip_start:
+            continue
+
+        if start >= clip_end:
+            continue
+
+        subtitle_start = max(
+            0,
+            start - clip_start
+        )
+
+        subtitle_end = min(
+            clip_end,
+            end
+        ) - clip_start
+
+        if subtitle_end <= subtitle_start:
+            continue
+
+        subtitles.append(
+            (
+                subtitle_start,
+                subtitle_end,
+                text
+            )
+        )
+
+    return write_srt(
+        subtitles,
+        output_file
+    )
+
+
+def write_srt(subtitles, output_file):
     with open(
         output_file,
         "w",
         encoding="utf-8"
     ) as file:
-
         for index, (
             start,
             end,
             text
-        ) in enumerate(subtitles, start=1):
-
+        ) in enumerate(
+            subtitles,
+            start=1
+        ):
             file.write(
                 f"{index}\n"
             )
@@ -200,44 +403,6 @@ def create_story_subtitles(
     )
 
     return True
-
-
-def format_srt_time(seconds):
-    seconds = max(0, float(seconds))
-
-    hours = int(seconds // 3600)
-
-    minutes = int(
-        (seconds % 3600) // 60
-    )
-
-    secs = int(seconds % 60)
-
-    millis = int(
-        round(
-            (seconds - int(seconds))
-            * 1000
-        )
-    )
-
-    if millis >= 1000:
-        secs += 1
-        millis -= 1000
-
-    if secs >= 60:
-        minutes += 1
-        secs -= 60
-
-    if minutes >= 60:
-        hours += 1
-        minutes -= 60
-
-    return (
-        f"{hours:02d}:"
-        f"{minutes:02d}:"
-        f"{secs:02d},"
-        f"{millis:03d}"
-    )
 
 
 def escape_drawtext(text):
@@ -296,7 +461,6 @@ def create_clip(
             f"Video not found: {video}"
         )
 
-    # Always create output directory before FFmpeg.
     output.parent.mkdir(
         parents=True,
         exist_ok=True
@@ -345,7 +509,9 @@ def create_clip(
         subtitle = Path(subtitle_path)
 
         if subtitle.exists():
-            subtitle_file = escape_filter_path(subtitle)
+            subtitle_file = escape_filter_path(
+                subtitle
+            )
 
             subtitle_filter = (
                 "subtitles="
@@ -377,9 +543,6 @@ def create_clip(
         "fontcolor=white"
     )
 
-    # ---------------------------------------------------------
-    # LOGO + FILTER GRAPH
-    # ---------------------------------------------------------
     if (
         logo_path
         and Path(logo_path).exists()
@@ -401,46 +564,32 @@ def create_clip(
         command = [
             "ffmpeg",
             "-y",
-
             "-ss",
             str(start),
-
             "-t",
             str(end - start),
-
             "-i",
             str(video),
-
             "-i",
             str(logo),
-
             "-filter_complex",
             filter_complex,
-
             "-map",
             "[vout]",
-
             "-map",
             "0:a?",
-
             "-c:v",
             "libx264",
-
             "-preset",
             "veryfast",
-
             "-crf",
             "23",
-
             "-c:a",
             "aac",
-
             "-b:a",
             "192k",
-
             "-movflags",
             "+faststart",
-
             str(output)
         ]
 
@@ -450,43 +599,30 @@ def create_clip(
         command = [
             "ffmpeg",
             "-y",
-
             "-ss",
             str(start),
-
             "-t",
             str(end - start),
-
             "-i",
             str(video),
-
             "-vf",
             video_filter,
-
             "-map",
             "0:v",
-
             "-map",
             "0:a?",
-
             "-c:v",
             "libx264",
-
             "-preset",
             "veryfast",
-
             "-crf",
             "23",
-
             "-c:a",
             "aac",
-
             "-b:a",
             "192k",
-
             "-movflags",
             "+faststart",
-
             str(output)
         ]
 
@@ -535,7 +671,7 @@ def main():
             "<output_dir> "
             "<platform> "
             "<content_number> "
-            "<subtitle_transcript>"
+            "<subtitle_source>"
         )
 
         sys.exit(1)
@@ -545,11 +681,8 @@ def main():
     output_dir = Path(sys.argv[3])
     platform = sys.argv[4]
     content_number = sys.argv[5]
-    transcript_path = sys.argv[6]
+    subtitle_source = Path(sys.argv[6])
 
-    # IMPORTANT:
-    # Create the output directory BEFORE
-    # creating story_subtitles.srt.
     output_dir.mkdir(
         parents=True,
         exist_ok=True
@@ -587,11 +720,18 @@ def main():
         / "story_subtitles.srt"
     )
 
-    create_story_subtitles(
-        story,
-        transcript_path,
-        subtitle_path
-    )
+    if subtitle_source.suffix.lower() == ".srt":
+        create_story_subtitles_from_srt(
+            story,
+            subtitle_source,
+            subtitle_path
+        )
+    else:
+        create_story_subtitles_from_json(
+            story,
+            subtitle_source,
+            subtitle_path
+        )
 
     logo_path = Path(
         "assets/logo.png"
