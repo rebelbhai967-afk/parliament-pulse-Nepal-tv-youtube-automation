@@ -12,9 +12,7 @@ def format_srt_time(seconds):
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
-    millis = int(
-        round((seconds - int(seconds)) * 1000)
-    )
+    millis = int(round((seconds - int(seconds)) * 1000))
 
     if millis >= 1000:
         secs += 1
@@ -45,22 +43,21 @@ def translate_text(translator, text):
     try:
         return translator.translate(text)
     except Exception as error:
-        print(
-            f"Translation failed: {error}"
-        )
+        print(f"Translation failed: {error}")
         return text
 
 
-def translate_transcript(
+def create_story_subtitles(
     transcript_path,
+    story,
     output_path
 ):
-    transcript_file = Path(
-        transcript_path
-    )
-    output_file = Path(
-        output_path
-    )
+    transcript_file = Path(transcript_path)
+
+    if not transcript_file.exists():
+        raise FileNotFoundError(
+            f"Transcript not found: {transcript_file}"
+        )
 
     with open(
         transcript_file,
@@ -69,12 +66,26 @@ def translate_transcript(
     ) as file:
         data = json.load(file)
 
+    story_start = float(
+        story.get("start", 0)
+    )
+
+    story_end = float(
+        story.get("end", 0)
+    )
+
+    if story_end <= story_start:
+        raise ValueError(
+            "Invalid story timestamps."
+        )
+
     translator = GoogleTranslator(
         source="ne",
         target="en"
     )
 
-    output_file.parent.mkdir(
+    output = Path(output_path)
+    output.parent.mkdir(
         parents=True,
         exist_ok=True
     )
@@ -82,7 +93,7 @@ def translate_transcript(
     subtitle_index = 1
 
     with open(
-        output_file,
+        output,
         "w",
         encoding="utf-8"
     ) as file:
@@ -91,13 +102,12 @@ def translate_transcript(
             "segments",
             []
         ):
-            start = segment.get(
-                "start",
-                0
+            start = float(
+                segment.get("start", 0)
             )
-            end = segment.get(
-                "end",
-                0
+
+            end = float(
+                segment.get("end", 0)
             )
 
             nepali = str(
@@ -108,6 +118,37 @@ def translate_transcript(
             ).strip()
 
             if not nepali:
+                continue
+
+            # Ignore segments outside selected story.
+            if end <= story_start:
+                continue
+
+            if start >= story_end:
+                continue
+
+            # Keep subtitle inside selected story.
+            actual_start = max(
+                start,
+                story_start
+            )
+
+            actual_end = min(
+                end,
+                story_end
+            )
+
+            # Convert absolute Parliament timestamp
+            # into timestamp relative to the generated clip.
+            relative_start = (
+                actual_start - story_start
+            )
+
+            relative_end = (
+                actual_end - story_start
+            )
+
+            if relative_end <= relative_start:
                 continue
 
             english = translate_text(
@@ -123,9 +164,9 @@ def translate_transcript(
             )
 
             file.write(
-                f"{format_srt_time(start)} "
+                f"{format_srt_time(relative_start)} "
                 f"--> "
-                f"{format_srt_time(end)}\n"
+                f"{format_srt_time(relative_end)}\n"
             )
 
             file.write(
@@ -134,24 +175,23 @@ def translate_transcript(
 
             subtitle_index += 1
 
-            # Avoid sending requests too quickly.
             time.sleep(0.15)
 
     print("")
+    print("====================================")
+    print("ENGLISH STORY SUBTITLES CREATED")
+    print("====================================")
+    print(f"Transcript: {transcript_file}")
+    print(f"Output:     {output}")
+    print(f"Story start: {story_start:.2f}")
+    print(f"Story end:   {story_end:.2f}")
     print(
-        f"English subtitles created: "
-        f"{output_file}"
-    )
-    print(
-        f"Subtitle entries: "
+        f"Entries:     "
         f"{subtitle_index - 1}"
     )
 
 
-def find_transcript_for_story(
-    story,
-    default_dir
-):
+def find_transcript(story, transcript_dir):
     if not story:
         return None
 
@@ -165,15 +205,13 @@ def find_transcript_for_story(
         if path.exists():
             return path
 
-    video = story.get(
-        "video"
-    )
+    video = story.get("video")
 
     if video:
         video_path = Path(video)
 
         candidate = (
-            Path(default_dir)
+            Path(transcript_dir)
             / f"{video_path.stem}.json"
         )
 
@@ -188,24 +226,18 @@ def translate_selected_stories(
     transcript_dir,
     output_dir
 ):
-    selection_path = Path(
-        selection_file
-    )
-    output_path = Path(
-        output_dir
-    )
-
-    output_path.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
     with open(
-        selection_path,
+        selection_file,
         "r",
         encoding="utf-8"
     ) as file:
         selection = json.load(file)
+
+    output = Path(output_dir)
+    output.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     long_story = selection.get(
         "long_video"
@@ -217,7 +249,7 @@ def translate_selected_stories(
 
     print("")
     print("====================================")
-    print("SELECTED STORY TRANSLATION")
+    print("DAILY ENGLISH SUBTITLE GENERATION")
     print("====================================")
 
     # ----------------------------------------
@@ -225,31 +257,20 @@ def translate_selected_stories(
     # ----------------------------------------
 
     if long_story:
-        long_transcript = (
-            find_transcript_for_story(
-                long_story,
-                transcript_dir
-            )
+        transcript = find_transcript(
+            long_story,
+            transcript_dir
         )
 
-        if not long_transcript:
+        if not transcript:
             raise RuntimeError(
-                "Long story transcript "
-                "could not be found."
+                "Long story transcript not found."
             )
 
-        print("")
-        print("LONG VIDEO")
-        print("------------------------------------")
-        print(
-            f"Transcript: "
-            f"{long_transcript}"
-        )
-
-        translate_transcript(
-            long_transcript,
-            output_path
-            / "long_subtitles.srt"
+        create_story_subtitles(
+            transcript,
+            long_story,
+            output / "long_subtitles.srt"
         )
 
     # ----------------------------------------
@@ -257,41 +278,27 @@ def translate_selected_stories(
     # ----------------------------------------
 
     if short_story:
-        short_transcript = (
-            find_transcript_for_story(
-                short_story,
-                transcript_dir
-            )
+        transcript = find_transcript(
+            short_story,
+            transcript_dir
         )
 
-        if not short_transcript:
+        if not transcript:
             raise RuntimeError(
-                "Short story transcript "
-                "could not be found."
+                "Short story transcript not found."
             )
 
-        print("")
-        print("SHORT / REEL")
-        print("------------------------------------")
-        print(
-            f"Transcript: "
-            f"{short_transcript}"
-        )
-
-        translate_transcript(
-            short_transcript,
-            output_path
-            / "short_subtitles.srt"
+        create_story_subtitles(
+            transcript,
+            short_story,
+            output / "short_subtitles.srt"
         )
 
     print("")
-    print("====================================")
-    print("TRANSLATION COMPLETE")
-    print("====================================")
+    print("SUBTITLE GENERATION COMPLETE")
 
 
 if __name__ == "__main__":
-
     if len(sys.argv) != 4:
         print("Usage:")
         print(
@@ -302,12 +309,8 @@ if __name__ == "__main__":
         )
         sys.exit(1)
 
-    selection_file = sys.argv[1]
-    transcript_dir = sys.argv[2]
-    output_dir = sys.argv[3]
-
     translate_selected_stories(
-        selection_file,
-        transcript_dir,
-        output_dir
+        sys.argv[1],
+        sys.argv[2],
+        sys.argv[3]
     )
