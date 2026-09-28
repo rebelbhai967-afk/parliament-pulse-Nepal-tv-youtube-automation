@@ -3,14 +3,14 @@ name: Parliament Pulse Nepal Automation
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 12 * * *"
+    - cron: "0 18 * * *"
+      timezone: "Asia/Kathmandu"
 
 jobs:
   daily-parliament-automation:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -19,10 +19,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install FFmpeg
+      - name: Install FFmpeg and fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg fonts-noto-core
 
       - name: Install dependencies
         run: |
@@ -39,12 +39,10 @@ jobs:
           import json
           with open("data/videos.json", "r", encoding="utf-8") as file:
               collections = json.load(file)
-          print("Parliament collections found:")
-          print(len(collections))
+          print("Parliament collections found:", len(collections))
           if not collections:
               raise RuntimeError("No Parliament collections found.")
           for index, item in enumerate(collections[:10], start=1):
-              print("")
               print(f"{index}. {item.get('title', '')}")
               print(item.get('url', ''))
           PY
@@ -59,8 +57,7 @@ jobs:
           if not collections:
               raise RuntimeError("No Parliament collection available.")
           collection_url = collections[0]["url"]
-          print("Selected Parliament collection:")
-          print(collection_url)
+          print("Selected Parliament collection:", collection_url)
           result = subprocess.run(
               ["python", "src/download.py", collection_url, "data/videos", "5"],
               text=True,
@@ -74,9 +71,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           videos = sorted(Path("data/videos").glob("video_*.mp4"))
-          print("")
-          print("Downloaded Parliament videos:")
-          print(len(videos))
+          print("Downloaded Parliament videos:", len(videos))
           if len(videos) < 2:
               raise RuntimeError("At least 2 Parliament videos are required for separate Long and Short stories.")
           for video in videos:
@@ -99,8 +94,6 @@ jobs:
           print(f"Transcript files: {len(transcripts)}")
           if not transcripts:
               raise RuntimeError("No transcripts were created.")
-          for transcript in transcripts:
-              print(transcript)
           PY
 
       - name: Clean transcripts
@@ -116,44 +109,11 @@ jobs:
           print(f"Cleaned transcript files: {len(transcripts)}")
           if not transcripts:
               raise RuntimeError("No cleaned transcripts found.")
-          for transcript in transcripts:
-              print(transcript)
           PY
 
       - name: Select daily Parliament stories
         run: |
           python src/batch_analyze.py data/transcripts_clean data/daily_selection.json
-
-      - name: Show selected stories
-        run: |
-          python - <<'PY'
-          import json
-          with open("data/daily_selection.json", "r", encoding="utf-8") as file:
-              data = json.load(file)
-          long_story = data.get("long_video")
-          short_story = data.get("short_video")
-          print("")
-          print("====================================")
-          print("DAILY PARLIAMENT STORIES")
-          print("====================================")
-          print("")
-          print("LONG VIDEO")
-          print("Video:", long_story.get("video"))
-          print("Start:", long_story.get("start"))
-          print("End:", long_story.get("end"))
-          print("Score:", long_story.get("score"))
-          print("Text:", long_story.get("text"))
-          print("")
-          print("SHORT / REEL")
-          if short_story:
-              print("Video:", short_story.get("video"))
-              print("Start:", short_story.get("start"))
-              print("End:", short_story.get("end"))
-              print("Score:", short_story.get("score"))
-              print("Text:", short_story.get("text"))
-          else:
-              print("NO SEPARATE SHORT STORY FOUND")
-          PY
 
       - name: Verify separate Short video
         run: |
@@ -167,13 +127,10 @@ jobs:
               raise RuntimeError("Long Parliament story was not selected.")
           if not short_story:
               raise RuntimeError("No separate Short/Reel story found. Workflow will not duplicate the Long video.")
-          long_video = long_story.get("video")
-          short_video = short_story.get("video")
-          print("Long video:", long_video)
-          print("Short video:", short_video)
-          if long_video == short_video:
+          if long_story.get("video") == short_story.get("video"):
               raise RuntimeError("Long and Short videos are the same. Separate video requirement failed.")
-          print("")
+          print("Long video:", long_story.get("video"))
+          print("Short video:", short_story.get("video"))
           print("SEPARATE SHORT VIDEO CHECK PASSED")
           PY
 
@@ -199,15 +156,10 @@ jobs:
           ]:
               if not path.exists():
                   raise RuntimeError(f"{label} missing: {path}")
-          Path("data").mkdir(parents=True, exist_ok=True)
           shutil.copy2(long_video, "data/selected_long.mp4")
           shutil.copy2(short_video, "data/selected_short.mp4")
           shutil.copy2(long_transcript, "data/long_transcript.json")
           shutil.copy2(short_transcript, "data/short_transcript.json")
-          print("Selected Long:", long_video)
-          print("Selected Short:", short_video)
-          print("Long transcript:", long_transcript)
-          print("Short transcript:", short_transcript)
           PY
 
       - name: Translate Long story
@@ -217,9 +169,8 @@ jobs:
           import subprocess
           with open("data/daily_selection.json", "r", encoding="utf-8") as file:
               data = json.load(file)
-          transcript = data["long_video"]["transcript"]
           result = subprocess.run(
-              ["python", "src/translate.py", transcript, "data/long_subtitles.srt"],
+              ["python", "src/translate.py", data["long_video"]["transcript"], "data/long_subtitles.srt"],
               text=True,
           )
           if result.returncode != 0:
@@ -233,23 +184,56 @@ jobs:
           import subprocess
           with open("data/daily_selection.json", "r", encoding="utf-8") as file:
               data = json.load(file)
-          transcript = data["short_video"]["transcript"]
           result = subprocess.run(
-              ["python", "src/translate.py", transcript, "data/short_subtitles.srt"],
+              ["python", "src/translate.py", data["short_video"]["transcript"], "data/short_subtitles.srt"],
               text=True,
           )
           if result.returncode != 0:
               raise RuntimeError("Short story translation failed.")
           PY
 
-      - name: Verify English subtitles
+      - name: Generate titles descriptions and keywords
         run: |
-          test -s data/long_subtitles.srt
-          test -s data/short_subtitles.srt
-          echo "Long subtitles:"
-          wc -l data/long_subtitles.srt
-          echo "Short subtitles:"
-          wc -l data/short_subtitles.srt
+          mkdir -p data/metadata
+          python src/generate_metadata.py data/daily_selection.json data/metadata
+          test -s data/metadata/long_metadata.json
+          test -s data/metadata/short_metadata.json
+
+      - name: Generate thumbnails
+        run: |
+          mkdir -p data/thumbnails
+          python - <<'PY'
+          import json
+          import subprocess
+          with open("data/metadata/long_metadata.json", "r", encoding="utf-8") as file:
+              long_meta = json.load(file)
+          with open("data/metadata/short_metadata.json", "r", encoding="utf-8") as file:
+              short_meta = json.load(file)
+          commands = [
+              [
+                  "python", "src/thumbnail.py",
+                  "data/selected_long.mp4",
+                  long_meta["title"],
+                  str(long_meta["start"]),
+                  "data/thumbnails/long_thumbnail.jpg",
+                  "false",
+              ],
+              [
+                  "python", "src/thumbnail.py",
+                  "data/selected_short.mp4",
+                  short_meta["title"],
+                  str(short_meta["start"]),
+                  "data/thumbnails/short_thumbnail.jpg",
+                  "true",
+              ],
+          ]
+          for command in commands:
+              result = subprocess.run(command, text=True)
+              if result.returncode != 0:
+                  raise RuntimeError("Thumbnail generation failed.")
+          PY
+          test -s data/thumbnails/long_thumbnail.jpg
+          test -s data/thumbnails/short_thumbnail.jpg
 
       - name: Prepare Long analysis
         run: |
@@ -293,7 +277,7 @@ jobs:
 
       - name: Create Separate Instagram Reel
         run: |
-          python src/clip.py data/selected_short.mp4 data/short_analysis.json output/instagram_reels instagram 2 data/short_subtitles.srt
+          python src/clip.py data/selected_short.mp4 data/short_analysis.json output/instagram_reels instagram_reels 2 data/short_subtitles.srt
 
       - name: Create Long TikTok video
         run: |
@@ -305,10 +289,7 @@ jobs:
 
       - name: Verify generated clips
         run: |
-          echo "Generated files:"
-          find output -type f -print
           count=$(find output -type f -name "*.mp4" | wc -l)
-          echo ""
           echo "Generated MP4 count: $count"
           if [ "$count" -lt 8 ]; then
             echo "Expected at least 8 platform MP4 files."
@@ -341,6 +322,16 @@ jobs:
         with:
           name: parliament-clean-transcripts
           path: data/transcripts_clean/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload metadata and thumbnails
+        uses: actions/upload-artifact@v4
+        with:
+          name: parliament-metadata-thumbnails
+          path: |
+            data/metadata/
+            data/thumbnails/
           if-no-files-found: error
           retention-days: 7
 
