@@ -269,7 +269,7 @@ jobs:
 
       - name: Create Separate Facebook Reel
         run: |
-          python src/clip.py data/selected_short.mp4 data/short_analysis.json output/facebook_reels facebook 2 data/short_subtitles.srt
+          python src/clip.py data/selected_short.mp4 data/short_analysis.json output/facebook_reels facebook_reels 2 data/short_subtitles.srt
 
       - name: Create Long Instagram video
         run: |
