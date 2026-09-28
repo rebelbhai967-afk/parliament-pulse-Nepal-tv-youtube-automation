@@ -382,6 +382,11 @@ jobs:
             --metadata data/metadata/short_metadata.json \
             --privacy private
 
+      - name: Remove temporary YouTube OAuth files
+        if: always()
+        run: |
+          rm -f client_secret.json token.json
+
       - name: Verify generated clips
         run: |
           count=$(find output -type f -name "*.mp4" | wc -l)
