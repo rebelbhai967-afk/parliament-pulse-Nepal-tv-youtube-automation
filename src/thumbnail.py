@@ -89,22 +89,20 @@ def make_thumbnail(video, title, output, start, vertical=False):
 
 
 def main():
-    if len(sys.argv) != 7:
+    if len(sys.argv) != 6:
         print(
             "Usage: python src/thumbnail.py "
-            "<video> <title> <start> <long_output> <short_output> <vertical>"
+            "<video> <title> <start> <output> <vertical>"
         )
         sys.exit(1)
 
     video = sys.argv[1]
     title = sys.argv[2]
     start = float(sys.argv[3])
-    long_output = sys.argv[4]
-    short_output = sys.argv[5]
-    vertical = sys.argv[6].lower() == "true"
+    output = sys.argv[4]
+    vertical = sys.argv[5].lower() == "true"
 
-    make_thumbnail(video, title, long_output, start, False)
-    make_thumbnail(video, title, short_output, start, True)
+    make_thumbnail(video, title, output, start, vertical)
 
 
 if __name__ == "__main__":
