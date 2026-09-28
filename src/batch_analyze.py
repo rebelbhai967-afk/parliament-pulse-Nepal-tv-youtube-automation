@@ -37,7 +37,6 @@ KEYWORDS = {
     "वार्षिक": 3,
 }
 
-
 QUESTION_WORDS = [
     "किन",
     "के",
@@ -49,7 +48,6 @@ QUESTION_WORDS = [
     "गर्नुहुन्छ",
     "बताउनुहोस्",
 ]
-
 
 STRONG_PHRASES = [
     "गम्भीर",
@@ -67,76 +65,41 @@ STRONG_PHRASES = [
 
 
 def clean_text(text):
-    text = str(text).strip()
-
-    return re.sub(
-        r"\s+",
-        " ",
-        text
-    )
+    return re.sub(r"\s+", " ", str(text).strip())
 
 
 def keyword_score(text):
-    score = 0
-
-    for keyword, weight in KEYWORDS.items():
-        if keyword in text:
-            score += weight
-
-    return score
+    return sum(weight for keyword, weight in KEYWORDS.items() if keyword in text)
 
 
 def question_score(text):
-    score = 0
-
-    for word in QUESTION_WORDS:
-        if word in text:
-            score += 2
-
+    score = sum(2 for word in QUESTION_WORDS if word in text)
     if "?" in text:
         score += 2
-
     return score
 
 
 def statement_score(text):
-    score = 0
-
-    for phrase in STRONG_PHRASES:
-        if phrase in text:
-            score += 2
-
-    return score
+    return sum(2 for phrase in STRONG_PHRASES if phrase in text)
 
 
 def length_score(text):
     length = len(text)
-
     if 80 <= length <= 500:
         return 5
-
-    if 40 <= length < 80:
+    if 40 <= length < 80 or 500 < length <= 800:
         return 3
-
-    if 500 < length <= 800:
-        return 3
-
     return 1
 
 
 def score_segment(segment):
-    text = clean_text(
-        segment.get("nepali", "")
+    text = clean_text(segment.get("nepali", ""))
+    return (
+        keyword_score(text)
+        + question_score(text)
+        + statement_score(text)
+        + length_score(text)
     )
-
-    score = 0
-
-    score += keyword_score(text)
-    score += question_score(text)
-    score += statement_score(text)
-    score += length_score(text)
-
-    return score
 
 
 def build_candidate(segments, index, min_duration, max_duration):
@@ -194,390 +157,156 @@ def build_candidate(segments, index, min_duration, max_duration):
     }
 
 
-
 def topic_words(text):
     ignored = {
-        "को",
-        "का",
-        "की",
-        "ले",
-        "लाई",
-        "मा",
-        "बाट",
-        "र",
-        "तर",
-        "पनि",
-        "छ",
-        "हो",
-        "हुन",
-        "भएको",
-        "गरेको",
-        "गर्ने",
-        "गर्न",
-        "भन्ने",
-        "हामी",
-        "तपाईं",
-        "उहाँ",
-        "यस",
-        "यो",
-        "त्यो",
+        "को", "का", "की", "ले", "लाई", "मा", "बाट", "र", "तर", "पनि",
+        "छ", "हो", "हुन", "भएको", "गरेको", "गर्ने", "गर्न", "भन्ने",
+        "हामी", "तपाईं", "उहाँ", "यस", "यो", "त्यो",
     }
 
-    words = set()
-
-    for word in text.split():
-        word = word.strip(
-            ".,!?;:।"
-        )
-
-        if (
-            len(word) >= 3
-            and word not in ignored
-        ):
-            words.add(word)
-
-    return words
+    return {
+        word.strip(".,!?;:।")
+        for word in text.split()
+        if len(word.strip(".,!?;:।")) >= 3
+        and word.strip(".,!?;:।") not in ignored
+    }
 
 
-def topic_similarity(
-    first_text,
-    second_text
-):
-    first = topic_words(
-        first_text
-    )
-
-    second = topic_words(
-        second_text
-    )
-
-    if not first or not second:
-        return 0.0
-
-    intersection = first & second
+def topic_similarity(first_text, second_text):
+    first = topic_words(first_text)
+    second = topic_words(second_text)
     union = first | second
-
     if not union:
         return 0.0
-
-    return len(intersection) / len(union)
-
-
-def overlaps(first, second):
-    return not (
-        first["end"] <= second["start"]
-        or second["end"] <= first["start"]
-    )
+    return len(first & second) / len(union)
 
 
-def score_transcript(
-    transcript_file
-):
-    with open(
-        transcript_file,
-        "r",
-        encoding="utf-8"
-    ) as file:
-        data = json.load(file)
+def add_video_context(candidate, transcript_file):
+    candidate["video"] = str(Path("data/videos") / (transcript_file.stem + ".mp4"))
+    candidate["transcript"] = str(transcript_file)
+    return candidate
 
-    segments = data.get(
-        "segments",
-        []
-    )
 
+def candidates_for_duration(segments, min_duration, max_duration):
     candidates = []
-
-    for index, segment in enumerate(
-        segments
-    ):
-        text = clean_text(
-            segment.get(
-                "nepali",
-                ""
-            )
-        )
-
-        if not text:
+    for index, segment in enumerate(segments):
+        if not clean_text(segment.get("nepali", "")):
             continue
-
         candidate = build_candidate(
-            segments,
-            index,
-            min_duration=20,
-            max_duration=89
+            segments, index, min_duration=min_duration, max_duration=max_duration
         )
-
-        if 20 <= candidate["duration"] <= 89:
+        if min_duration <= candidate["duration"] <= max_duration:
             candidates.append(candidate)
-
     return candidates
 
 
-def choose_short_story(
-    candidates,
-    long_story
-):
-    for candidate in candidates:
-        # Short must come from a DIFFERENT
-        # Parliament video.
-        if (
-            candidate["video"]
-            == long_story["video"]
-        ):
-            continue
-
-        # Avoid almost identical topic.
-        similarity = topic_similarity(
-            candidate["text"],
-            long_story["text"]
-        )
-
-        if similarity >= 0.35:
-            continue
-
-        return candidate
-
-    return None
+def load_transcript(path):
+    with open(path, "r", encoding="utf-8") as file:
+        return json.load(file)
 
 
-def analyze_all_transcripts(
-    input_dir,
-    output_file
-):
+def analyze_all_transcripts(input_dir, output_file):
     input_path = Path(input_dir)
     output_path = Path(output_file)
-
-    transcript_files = sorted(
-        input_path.glob(
-            "video_*.json"
-        )
-    )
+    transcript_files = sorted(input_path.glob("video_*.json"))
 
     if not transcript_files:
-        raise RuntimeError(
-            "No transcript files found."
-        )
+        raise RuntimeError("No transcript files found.")
 
-    all_candidates = []
+    long_candidates = []
+    short_candidates = []
 
     for transcript_file in transcript_files:
-        print("")
-        print(
-            f"Analyzing: "
-            f"{transcript_file}"
-        )
+        print(f"\nAnalyzing: {transcript_file}")
+        data = load_transcript(transcript_file)
+        segments = data.get("segments", [])
 
-        candidates = score_transcript(
-            transcript_file
-        )
+        for candidate in candidates_for_duration(segments, 181, 600):
+            long_candidates.append(add_video_context(candidate, transcript_file))
 
-        video_name = (
-            transcript_file.stem
-            + ".mp4"
-        )
+        for candidate in candidates_for_duration(segments, 20, 89):
+            short_candidates.append(add_video_context(candidate, transcript_file))
 
-        video_path = (
-            Path("data/videos")
-            / video_name
-        )
-
-        for candidate in candidates:
-            candidate["video"] = str(
-                video_path
-            )
-
-            candidate["transcript"] = str(
-                transcript_file
-            )
-
-            all_candidates.append(
-                candidate
-            )
-
-    if not all_candidates:
+    if not long_candidates:
         raise RuntimeError(
-            "No story candidates found."
+            "No valid Long story found with duration between 181 and 600 seconds."
         )
 
-    all_candidates.sort(
-        key=lambda item: item["score"],
-        reverse=True
-    )
+    long_candidates.sort(key=lambda item: item["score"], reverse=True)
+    short_candidates.sort(key=lambda item: item["score"], reverse=True)
 
-    long_center = all_candidates[0]
-    source_transcript = Path(long_center["transcript"])
-    with open(source_transcript, "r", encoding="utf-8") as file:
-        source_data = json.load(file)
-    source_segments = source_data.get("segments", [])
-    center_index = min(
-        range(len(source_segments)),
-        key=lambda i: abs(float(source_segments[i].get("start", 0)) - long_center["start"])
-    )
-    long_story = build_candidate(
-        source_segments,
-        center_index,
-        min_duration=181,
-        max_duration=600
-    )
-    long_story["score"] = long_center["score"]
-    long_story["video"] = long_center["video"]
-    long_story["transcript"] = long_center["transcript"]
-
+    long_story = long_candidates[0]
     short_story = None
 
-    for candidate in all_candidates[1:]:
-        if (
-            candidate["video"]
-            == long_story["video"]
-        ):
+    for candidate in short_candidates:
+        if candidate["video"] == long_story["video"]:
             continue
-
-        similarity = topic_similarity(
-            candidate["text"],
-            long_story["text"]
-        )
-
-        if similarity >= 0.35:
+        if topic_similarity(candidate["text"], long_story["text"]) >= 0.35:
             continue
-
         short_story = candidate
         break
 
     alternatives = []
-
-    for candidate in all_candidates:
-        if candidate is long_story:
+    for candidate in long_candidates[1:] + short_candidates:
+        if short_story is not None and candidate is short_story:
             continue
-
-        if short_story is not None:
-            if candidate is short_story:
-                continue
-
-        if (
-            candidate["video"]
-            == long_story["video"]
-        ):
+        if candidate["video"] == long_story["video"]:
             continue
-
-        similarity = topic_similarity(
-            candidate["text"],
-            long_story["text"]
-        )
-
-        if similarity >= 0.35:
+        if topic_similarity(candidate["text"], long_story["text"]) >= 0.35:
             continue
-
-        alternatives.append(
-            candidate
-        )
+        alternatives.append(candidate)
+        if len(alternatives) >= 10:
+            break
 
     result = {
-        "model": (
-            "parliament-story-selector-v5-duration-aware"
-        ),
-        "input_transcripts": [
-            str(file)
-            for file in transcript_files
-        ],
-        "total_candidates": len(
-            all_candidates
-        ),
+        "model": "parliament-story-selector-v6-duration-aware",
+        "input_transcripts": [str(file) for file in transcript_files],
+        "total_long_candidates": len(long_candidates),
+        "total_short_candidates": len(short_candidates),
         "selection_rules": [
-            "Long story uses the highest-scoring candidate center and expands to 181–600 seconds.",
+            "Long story is selected only from candidates that actually reach 181–600 seconds.",
             "Short/Reel must come from a different Parliament video.",
             "Short/Reel should have a different topic from the Long story.",
             "Short/Reel is kept between 20 and 89 seconds.",
-            "Overlapping or highly similar stories are excluded.",
-            "If no separate story exists, short_video is null."
+            "Candidates that cannot satisfy the requested duration are excluded.",
+            "If no separate Short story exists, short_video is null.",
         ],
         "long_video": long_story,
         "short_video": short_story,
-        "alternatives": alternatives[:10],
+        "alternatives": alternatives,
     }
 
-    output_path.parent.mkdir(
-        parents=True,
-        exist_ok=True
-    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as file:
+        json.dump(result, file, ensure_ascii=False, indent=2)
 
-    with open(
-        output_path,
-        "w",
-        encoding="utf-8"
-    ) as file:
-        json.dump(
-            result,
-            file,
-            ensure_ascii=False,
-            indent=2
-        )
-
-    print("")
-    print("====================================")
+    print("\n====================================")
     print("DAILY PARLIAMENT STORY SELECTION")
     print("====================================")
+    print("\nLONG VIDEO")
+    print(f"Video: {long_story['video']}")
+    print(f"Score: {long_story['score']}")
+    print(f"Start: {long_story['start']}")
+    print(f"End: {long_story['end']}")
+    print(f"Duration: {long_story['duration']}s")
 
-    print("")
-    print("LONG VIDEO")
-    print(
-        f"Video: "
-        f"{long_story['video']}"
-    )
-    print(
-        f"Score: "
-        f"{long_story['score']}"
-    )
-    print(
-        f"Start: "
-        f"{long_story['start']}"
-    )
-    print(
-        f"End: "
-        f"{long_story['end']}"
-    )
-
-    print("")
-    print("SHORT / REEL")
-
+    print("\nSHORT / REEL")
     if short_story:
-        print(
-            f"Video: "
-            f"{short_story['video']}"
-        )
-        print(
-            f"Score: "
-            f"{short_story['score']}"
-        )
-        print(
-            f"Start: "
-            f"{short_story['start']}"
-        )
-        print(
-            f"End: "
-            f"{short_story['end']}"
-        )
+        print(f"Video: {short_story['video']}")
+        print(f"Score: {short_story['score']}")
+        print(f"Start: {short_story['start']}")
+        print(f"End: {short_story['end']}")
+        print(f"Duration: {short_story['duration']}s")
     else:
-        print(
-            "No separate Short story found."
-        )
+        print("No separate Short story found.")
 
-    print("")
-    print(
-        f"Output: {output_path}"
-    )
+    print(f"\nOutput: {output_path}")
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage:")
-        print(
-            "python src/batch_analyze.py "
-            "<transcript_directory> "
-            "<output_json>"
-        )
+        print("python src/batch_analyze.py <transcript_directory> <output_json>")
         sys.exit(1)
 
-    analyze_all_transcripts(
-        sys.argv[1],
-        sys.argv[2]
-    )
+    analyze_all_transcripts(sys.argv[1], sys.argv[2])
