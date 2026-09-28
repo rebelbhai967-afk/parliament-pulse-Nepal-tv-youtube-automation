@@ -139,72 +139,60 @@ def score_segment(segment):
     return score
 
 
-def build_candidate(
-    segments,
-    index
-):
-    segment = segments[index]
+def build_candidate(segments, index, min_duration, max_duration):
+    center = segments[index]
+    center_start = float(center.get("start", 0))
+    center_end = float(center.get("end", center_start))
 
-    start = float(
-        segment.get("start", 0)
-    )
+    left = index
+    right = index
+    clip_start = center_start
+    clip_end = center_end
 
-    end = float(
-        segment.get("end", 0)
-    )
+    while (clip_end - clip_start) < min_duration:
+        can_left = left > 0
+        can_right = right < len(segments) - 1
+        if not can_left and not can_right:
+            break
 
-    selected = []
-
-    # Include nearby segments so the clip
-    # contains enough context.
-    for offset in [-1, 0, 1]:
-        position = index + offset
-
-        if position < 0:
-            continue
-
-        if position >= len(segments):
-            continue
-
-        selected.append(
-            segments[position]
+        left_duration = (
+            clip_end - float(segments[left - 1].get("start", clip_start))
+            if can_left else -1
+        )
+        right_duration = (
+            float(segments[right + 1].get("end", clip_end)) - clip_start
+            if can_right else -1
         )
 
-    clip_start = min(
-        float(item.get("start", start))
-        for item in selected
-    )
+        if can_left and (not can_right or left_duration <= right_duration):
+            left -= 1
+            clip_start = float(segments[left].get("start", clip_start))
+        elif can_right:
+            right += 1
+            clip_end = float(segments[right].get("end", clip_end))
 
-    clip_end = max(
-        float(item.get("end", end))
-        for item in selected
-    )
+    while (clip_end - clip_start) > max_duration and left < right:
+        left_span = float(segments[left + 1].get("start", clip_start)) - clip_start
+        right_span = clip_end - float(segments[right - 1].get("end", clip_end))
+        if left_span >= right_span:
+            left += 1
+            clip_start = float(segments[left].get("start", clip_start))
+        else:
+            right -= 1
+            clip_end = float(segments[right].get("end", clip_end))
 
-    text = " ".join(
-        clean_text(
-            item.get("nepali", "")
-        )
-        for item in selected
-    )
+    selected = segments[left:right + 1]
+    text = " ".join(clean_text(item.get("nepali", "")) for item in selected)
 
     return {
-        "start": round(
-            clip_start,
-            3
-        ),
-        "end": round(
-            clip_end,
-            3
-        ),
-        "score": score_segment(segment),
+        "start": round(clip_start, 3),
+        "end": round(clip_end, 3),
+        "duration": round(max(0, clip_end - clip_start), 3),
+        "score": score_segment(center),
         "text": text,
-        "center_text": clean_text(
-            segment.get(
-                "nepali",
-                ""
-            )
-        ),
+        "center_text": clean_text(center.get("nepali", "")),
     }
+
 
 
 def topic_words(text):
@@ -314,12 +302,13 @@ def score_transcript(
 
         candidate = build_candidate(
             segments,
-            index
+            index,
+            min_duration=45,
+            max_duration=89
         )
 
-        candidates.append(
-            candidate
-        )
+        if 45 <= candidate["duration"] <= 89:
+            candidates.append(candidate)
 
     return candidates
 
@@ -415,7 +404,24 @@ def analyze_all_transcripts(
         reverse=True
     )
 
-    long_story = all_candidates[0]
+    long_center = all_candidates[0]
+    source_transcript = Path(long_center["transcript"])
+    with open(source_transcript, "r", encoding="utf-8") as file:
+        source_data = json.load(file)
+    source_segments = source_data.get("segments", [])
+    center_index = min(
+        range(len(source_segments)),
+        key=lambda i: abs(float(source_segments[i].get("start", 0)) - long_center["start"])
+    )
+    long_story = build_candidate(
+        source_segments,
+        center_index,
+        min_duration=181,
+        max_duration=360
+    )
+    long_story["score"] = long_center["score"]
+    long_story["video"] = long_center["video"]
+    long_story["transcript"] = long_center["transcript"]
 
     short_story = None
 
@@ -467,7 +473,7 @@ def analyze_all_transcripts(
 
     result = {
         "model": (
-            "parliament-story-selector-v4"
+            "parliament-story-selector-v5-duration-aware"
         ),
         "input_transcripts": [
             str(file)
@@ -477,9 +483,10 @@ def analyze_all_transcripts(
             all_candidates
         ),
         "selection_rules": [
-            "Long story uses the highest-scoring candidate.",
+            "Long story uses the highest-scoring candidate center and expands to 181–360 seconds.",
             "Short/Reel must come from a different Parliament video.",
             "Short/Reel should have a different topic from the Long story.",
+            "Short/Reel is kept between 45 and 89 seconds.",
             "Overlapping or highly similar stories are excluded.",
             "If no separate story exists, short_video is null."
         ],
