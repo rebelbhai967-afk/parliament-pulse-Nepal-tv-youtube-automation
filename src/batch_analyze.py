@@ -417,7 +417,7 @@ def analyze_all_transcripts(
         source_segments,
         center_index,
         min_duration=181,
-        max_duration=360
+        max_duration=600
     )
     long_story["score"] = long_center["score"]
     long_story["video"] = long_center["video"]
@@ -483,7 +483,7 @@ def analyze_all_transcripts(
             all_candidates
         ),
         "selection_rules": [
-            "Long story uses the highest-scoring candidate center and expands to 181–360 seconds.",
+            "Long story uses the highest-scoring candidate center and expands to 181–600 seconds.",
             "Short/Reel must come from a different Parliament video.",
             "Short/Reel should have a different topic from the Long story.",
             "Short/Reel is kept between 45 and 89 seconds.",
