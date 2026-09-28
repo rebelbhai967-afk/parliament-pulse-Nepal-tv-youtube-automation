@@ -486,7 +486,7 @@ def create_clip(
         "youtube_shorts",
         "facebook_reels",
         "instagram_reels",
-        "tiktok"
+        "tiktok_shorts"
     }:
         filters.insert(
             0,
@@ -744,7 +744,8 @@ def main():
         "facebook_reels": "facebook_reel.mp4",
         "instagram": "instagram_long.mp4",
         "instagram_reels": "instagram_reel.mp4",
-        "tiktok": "tiktok_long.mp4"
+        "tiktok": "tiktok_long.mp4",
+        "tiktok_shorts": "tiktok_short.mp4"
     }
 
     filename = platform_names.get(
