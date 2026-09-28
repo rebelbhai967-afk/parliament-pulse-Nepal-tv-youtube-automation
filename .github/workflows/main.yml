@@ -287,6 +287,54 @@ jobs:
         run: |
           python src/clip.py data/selected_short.mp4 data/short_analysis.json output/tiktok_shorts tiktok 2 data/short_subtitles.srt
 
+      - name: Verify video duration rules
+        run: |
+          python - <<'PY'
+          import subprocess
+          from pathlib import Path
+
+          def duration(path):
+              result = subprocess.run(
+                  [
+                      "ffprobe", "-v", "error",
+                      "-show_entries", "format=duration",
+                      "-of", "default=noprint_wrappers=1:nokey=1",
+                      str(path),
+                  ],
+                  capture_output=True,
+                  text=True,
+                  check=True,
+              )
+              return float(result.stdout.strip())
+
+          long_files = [
+              Path("output/youtube/youtube_long.mp4"),
+              Path("output/facebook/facebook_long.mp4"),
+              Path("output/instagram/instagram_long.mp4"),
+              Path("output/tiktok/tiktok_long.mp4"),
+          ]
+          short_files = [
+              Path("output/youtube_shorts/youtube_short.mp4"),
+              Path("output/facebook_reels/facebook_reel.mp4"),
+              Path("output/instagram_reels/instagram_reel.mp4"),
+              Path("output/tiktok_shorts/tiktok_short.mp4"),
+          ]
+
+          for path in long_files:
+              seconds = duration(path)
+              print(f"{path}: {seconds:.2f}s")
+              if seconds <= 180:
+                  raise RuntimeError(f"Long video must be longer than 3 minutes: {path} ({seconds:.2f}s)")
+
+          for path in short_files:
+              seconds = duration(path)
+              print(f"{path}: {seconds:.2f}s")
+              if seconds >= 90:
+                  raise RuntimeError(f"Reel/Short must be under 90 seconds: {path} ({seconds:.2f}s)")
+
+          print("DURATION RULES PASSED: long > 180s, short/reel < 90s")
+          PY
+
       - name: Verify generated clips
         run: |
           count=$(find output -type f -name "*.mp4" | wc -l)
