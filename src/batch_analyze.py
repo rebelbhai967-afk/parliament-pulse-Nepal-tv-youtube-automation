@@ -303,11 +303,11 @@ def score_transcript(
         candidate = build_candidate(
             segments,
             index,
-            min_duration=45,
+            min_duration=20,
             max_duration=89
         )
 
-        if 45 <= candidate["duration"] <= 89:
+        if 20 <= candidate["duration"] <= 89:
             candidates.append(candidate)
 
     return candidates
@@ -486,7 +486,7 @@ def analyze_all_transcripts(
             "Long story uses the highest-scoring candidate center and expands to 181–600 seconds.",
             "Short/Reel must come from a different Parliament video.",
             "Short/Reel should have a different topic from the Long story.",
-            "Short/Reel is kept between 45 and 89 seconds.",
+            "Short/Reel is kept between 20 and 89 seconds.",
             "Overlapping or highly similar stories are excluded.",
             "If no separate story exists, short_video is null."
         ],
