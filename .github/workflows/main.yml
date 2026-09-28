@@ -352,10 +352,49 @@ jobs:
           printf '%s' "$YOUTUBE_TOKEN_JSON" > token.json
           python - <<'PY'
           import json
-          for path in ["client_secret.json", "token.json"]:
-              with open(path, "r", encoding="utf-8") as file:
-                  json.load(file)
-              print(f"Validated OAuth JSON: {path}")
+          from pathlib import Path
+
+          with open("client_secret.json", "r", encoding="utf-8") as file:
+              client_data = json.load(file)
+
+          with open("token.json", "r", encoding="utf-8") as file:
+              token_data = json.load(file)
+
+          client_config = client_data.get("web") or client_data.get("installed")
+          if not client_config:
+              raise RuntimeError("OAuth client JSON has no web/installed configuration.")
+
+          required = ["client_id", "client_secret", "token_uri"]
+          missing = [key for key in required if not client_config.get(key)]
+          if missing:
+              raise RuntimeError(f"OAuth client JSON missing: {', '.join(missing)}")
+
+          if not token_data.get("refresh_token"):
+              raise RuntimeError("YOUTUBE_TOKEN_JSON has no refresh_token.")
+
+          token_client_id = token_data.get("client_id")
+          client_id = client_config["client_id"]
+
+          print("OAuth client JSON: valid")
+          print("Token JSON: valid")
+          print("Refresh token: present")
+          print("OAuth client ID suffix:", client_id[-12:])
+
+          if token_client_id and token_client_id != client_id:
+              print("WARNING: token client_id differs from client secret client_id.")
+              print("Normalizing token.json to use the client ID/secret from YOUTUBE_CLIENT_SECRET_JSON.")
+
+          # Use the client ID/secret from the current client_secret.json together
+          # with the refresh token supplied in YOUTUBE_TOKEN_JSON.
+          token_data["client_id"] = client_config["client_id"]
+          token_data["client_secret"] = client_config["client_secret"]
+          token_data["token_uri"] = client_config["token_uri"]
+          token_data["scopes"] = ["https://www.googleapis.com/auth/youtube.upload"]
+
+          with open("token.json", "w", encoding="utf-8") as file:
+              json.dump(token_data, file, ensure_ascii=False, indent=2)
+
+          print("OAuth token configuration normalized successfully.")
           PY
 
       - name: Upload YouTube Long video
