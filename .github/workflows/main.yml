@@ -285,7 +285,7 @@ jobs:
 
       - name: Create Separate TikTok video
         run: |
-          python src/clip.py data/selected_short.mp4 data/short_analysis.json output/tiktok_shorts tiktok 2 data/short_subtitles.srt
+          python src/clip.py data/selected_short.mp4 data/short_analysis.json output/tiktok_shorts tiktok_shorts 2 data/short_subtitles.srt
 
       - name: Verify video duration rules
         run: |
