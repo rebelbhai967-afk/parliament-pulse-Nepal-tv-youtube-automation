@@ -335,6 +335,53 @@ jobs:
           print("DURATION RULES PASSED: long > 180s, short/reel < 90s")
           PY
 
+      - name: Prepare YouTube OAuth credentials
+        env:
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          if [ -z "$YOUTUBE_CLIENT_SECRET_JSON" ]; then
+            echo "Missing GitHub secret: YOUTUBE_CLIENT_SECRET_JSON"
+            exit 1
+          fi
+          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then
+            echo "Missing GitHub secret: YOUTUBE_TOKEN_JSON"
+            exit 1
+          fi
+          printf '%s' "$YOUTUBE_CLIENT_SECRET_JSON" > client_secret.json
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > token.json
+          python - <<'PY'
+          import json
+          for path in ["client_secret.json", "token.json"]:
+              with open(path, "r", encoding="utf-8") as file:
+                  json.load(file)
+              print(f"Validated OAuth JSON: {path}")
+          PY
+
+      - name: Upload YouTube Long video
+        env:
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          python src/youtube_upload.py \
+            output/youtube/youtube_long.mp4 \
+            --title "Parliament Pulse Nepal TV" \
+            --description "Nepal Parliament video by Parliament Pulse Nepal TV." \
+            --metadata data/metadata/long_metadata.json \
+            --privacy private
+
+      - name: Upload YouTube Short
+        env:
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          python src/youtube_upload.py \
+            output/youtube_shorts/youtube_short.mp4 \
+            --title "Parliament Pulse Nepal TV Short" \
+            --description "Nepal Parliament Short by Parliament Pulse Nepal TV." \
+            --metadata data/metadata/short_metadata.json \
+            --privacy private
+
       - name: Verify generated clips
         run: |
           count=$(find output -type f -name "*.mp4" | wc -l)
