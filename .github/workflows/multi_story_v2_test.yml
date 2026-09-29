@@ -51,10 +51,12 @@ jobs:
           houses=sorted({x.get("house") for x in items if x.get("house")})
           print("Videos:", len(items))
           print("Houses:", houses)
-          if len(items) < 4:
-              raise RuntimeError("Too few videos.")
+          if len(items) < 24:
+              raise RuntimeError(f"Need at least 24 distinct source videos for 12 Long + 12 Short separation; found {len(items)}.")
           if len(houses) < 2:
               raise RuntimeError("Both National Assembly and House of Representatives are required.")
+          if len({x.get("page") for x in items}) != len(items):
+              raise RuntimeError("Duplicate Parliament source pages detected.")
           PY
 
       - name: Transcribe all candidate videos
