@@ -58,7 +58,8 @@ def build_candidate(segments, i, min_s=70, max_s=180):
         else:
             right -= 1; end = float(segments[right].get("end", end))
     text = " ".join(clean(s.get("nepali")) for s in segments[left:right+1])
-    return {"start": round(start,3), "end": round(end,3), "duration": round(end-start,3), "score": score(text), "text": text}
+    opening_text = " ".join(clean(s.get("nepali")) for s in segments[left:min(left + 2, right + 1)])
+    return {"start": round(start,3), "end": round(end,3), "duration": round(end-start,3), "score": score(text), "text": text, "hook_text": opening_text}
 
 
 def load_video_meta():
