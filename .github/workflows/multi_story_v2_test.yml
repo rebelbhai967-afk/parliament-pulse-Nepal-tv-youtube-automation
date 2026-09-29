@@ -57,6 +57,10 @@ jobs:
               raise RuntimeError("Both National Assembly and House of Representatives are required.")
           if len({x.get("page") for x in items}) != len(items):
               raise RuntimeError("Duplicate Parliament source pages detected.")
+          named=[x for x in items if x.get("speaker")]
+          print("Speaker-attributed source videos:", len(named))
+          if len(named) < 24:
+              raise RuntimeError(f"Need at least 24 speaker-attributed source videos for the requested 12 Long + 12 Short build; found {len(named)}.")
           PY
 
       - name: Transcribe all candidate videos
