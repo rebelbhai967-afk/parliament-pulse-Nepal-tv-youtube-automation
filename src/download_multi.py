@@ -29,6 +29,8 @@ GENERIC_SPEAKERS = {
     "first meeting", "meeting", "sammananiye sabhamukh", "video",
     "watch video", "pratibedan pes", "pratibedhan pes", "national anthem",
     "bidhyak prastut", "सम्माननीय अध्यक्ष", "शून्य समय",
+    "house of representatives", "national assembly", "federal parliament", "parliament",
+    "annual report", "report presented", "proposal presented", "bill presented",
 }
 
 PROCEDURAL_SPEAKER_TERMS = (
@@ -64,11 +66,16 @@ def speaker_from_link(text):
     return normalize_speaker(text)
 
 def speaker_from_page_title(title):
-    """Parliament video pages often put the member name after the final slash."""
+    """Extract a likely member name from the final meaningful title component."""
     title = clean(title)
-    if "/" not in title:
+    if not title:
         return ""
-    return normalize_speaker(title.rsplit("/", 1)[-1])
+    parts = re.split(r"\s*(?:/|\\||:|–|—|- )\s*", title)
+    for part in reversed(parts):
+        candidate = normalize_speaker(part)
+        if candidate:
+            return candidate
+    return ""
 
 
 def video_pages(collection, s):
