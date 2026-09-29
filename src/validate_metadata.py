@@ -24,7 +24,9 @@ def validate_item(item, kind):
     if len(description) > 5000:
         errors.append("description > 5000 chars")
     if not speakers:
-        errors.append("missing speaker attribution")
+        # Official source pages do not always expose a member name. Never
+        # invent one; editorial_gate.py will surface this as a review warning.
+        pass
     if not hook.get("text"):
         errors.append("missing transcript-grounded opening hook")
     if hook.get("strategy") not in {"question_hook", "public_issue_hook", "strong_quote_hook", "strongest_available"}:
