@@ -92,18 +92,42 @@ def main(collections_json, output_dir, max_collections=4, max_videos=20):
             break
 
     # Prefer two latest collections per House.
+    # Respect the requested collection budget and spread it across both Houses.
+    # The previous implementation hard-coded only two collections per House,
+    # which could leave the pipeline with too few distinct videos for 12+12.
     selected = []
     counts = {}
+    seen_collection = set()
     for item in collections:
-        n = counts.get(item["source_id"], 0)
-        if n < 2:
+        key = (item.get("source_id"), item.get("url"))
+        if key in seen_collection:
+            continue
+        source_id = item.get("source_id", "")
+        if counts.get(source_id, 0) >= max(1, max_collections // 2):
+            continue
+        selected.append(item)
+        seen_collection.add(key)
+        counts[source_id] = counts.get(source_id, 0) + 1
+        if len(selected) >= max_collections:
+            break
+
+    # If one House has fewer available collections, fill remaining slots from
+    # the other House instead of silently stopping early.
+    if len(selected) < max_collections:
+        for item in collections:
+            key = (item.get("source_id"), item.get("url"))
+            if key in seen_collection:
+                continue
             selected.append(item)
-            counts[item["source_id"]] = n + 1
+            seen_collection.add(key)
+            if len(selected) >= max_collections:
+                break
 
     s = session()
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     records = []
+    seen_pages = set()
     index = 1
 
     for collection in selected:
@@ -112,6 +136,9 @@ def main(collections_json, output_dir, max_collections=4, max_videos=20):
         for page in pages:
             if len(records) >= max_videos:
                 break
+            if page["page"] in seen_pages:
+                continue
+            seen_pages.add(page["page"])
             try:
                 source, page_title = source_from_page(page["page"], s)
                 if not source:
