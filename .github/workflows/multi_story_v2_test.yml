@@ -58,9 +58,15 @@ jobs:
           if len({x.get("page") for x in items}) != len(items):
               raise RuntimeError("Duplicate Parliament source pages detected.")
           named=[x for x in items if x.get("speaker")]
-          print("Speaker-attributed source videos:", len(named))
+          print("Verified named-speaker source videos:", len(named))
+          named_by_house={}
+          for x in named:
+              named_by_house[x.get("house")]=named_by_house.get(x.get("house"),0)+1
+          print("Named speakers by House:", named_by_house)
           if len(named) < 6:
               raise RuntimeError(f"Need at least 6 verified named-speaker source videos for the requested 2 Long + 2 Short build; found {len(named)}.")
+          if named_by_house.get("National Assembly",0) < 2 or named_by_house.get("House of Representatives",0) < 2:
+              raise RuntimeError("Need at least 2 verified named-speaker source videos from each Parliament House.")
           PY
 
       - name: Transcribe all candidate videos
