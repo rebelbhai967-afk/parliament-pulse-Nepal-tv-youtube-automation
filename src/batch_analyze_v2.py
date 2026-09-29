@@ -3,6 +3,8 @@ import re
 import sys
 from pathlib import Path
 
+from editorial_hooks import enrich_piece
+
 KEYWORDS = {
     "प्रधानमन्त्री": 6, "मन्त्री": 5, "अर्थमन्त्री": 6, "सभामुख": 4, "अध्यक्ष": 4,
     "सरकार": 4, "कानुन": 5, "विधेयक": 5, "संशोधन": 5, "बजेट": 6, "कर": 4,
@@ -124,14 +126,14 @@ def main(input_dir, output_file):
             if total >= 181 or len(pieces) >= 4:
                 break
         if total >= 181 and len(pieces) <= 4:
-            long_stories.append({
+            long_stories.append(enrich_piece({
                 "pieces": pieces,
                 "duration": round(total,3),
                 "score": round(sum(p["score"] for p in pieces) + 8 * (len(pieces)-1), 3),
                 "speakers": [p["speaker"] for p in pieces if p["speaker"]],
                 "houses": sorted({p["house"] for p in pieces if p["house"]}),
                 "topic_text": " ".join(p["text"] for p in pieces),
-            })
+            }))
             used.update(p["video"] for p in pieces)
         if len(long_stories) >= 12:
             break
@@ -146,14 +148,14 @@ def main(input_dir, output_file):
                     continue
                 total = a["duration"] + b["duration"]
                 if 181 <= total <= 600 and similarity(a["text"], b["text"]) >= 0.03:
-                    long_stories.append({
+                    long_stories.append(enrich_piece({
                         "pieces": [a,b],
                         "duration": round(total,3),
                         "score": a["score"] + b["score"],
                         "speakers": [x["speaker"] for x in [a,b] if x["speaker"]],
                         "houses": sorted({x["house"] for x in [a,b] if x["house"]}),
                         "topic_text": a["text"] + " " + b["text"],
-                    })
+                    }))
                     used.update([a["video"], b["video"]])
                     break
             if len(long_stories) >= 12:
@@ -166,7 +168,7 @@ def main(input_dir, output_file):
             continue
         if c["duration"] <= 89:
             piece = dict(c)
-            short_stories.append({
+            short_stories.append(enrich_piece({
                 "pieces": [piece],
                 "duration": piece["duration"],
                 "score": piece["score"],
@@ -175,7 +177,7 @@ def main(input_dir, output_file):
                 "houses": [piece["house"]] if piece["house"] else [],
                 "topic_text": piece["text"],
                 "video": piece["video"],
-            })
+            }))
             short_used.add(c["video"])
         else:
             # trim to a centered 60-85 second window
@@ -199,7 +201,7 @@ def main(input_dir, output_file):
             break
 
     result = {
-        "model": "parliament-multi-story-v2",
+        "model": "parliament-multi-story-v2-editorial-hooks",
         "target": {"long": 12, "short": 12},
         "selection_rules": [
             "Candidate pool comes from both National Assembly and House of Representatives.",
@@ -208,6 +210,8 @@ def main(input_dir, output_file):
             "Speaker names come from official Parliament video-page labels when available.",
             "Repeated speakers/videos are limited to improve coverage.",
             "Low-information procedural clips are not preferred.",
+            "Every selected story receives a transcript-grounded cold-open hook.",
+            "The opening hook uses original Parliament audio; no synthetic voiceover is required.",
         ],
         "long_stories": long_stories,
         "short_stories": short_stories,
