@@ -8,6 +8,47 @@ BASE_TAGS = [
     "House of Representatives Nepal", "National Assembly Nepal", "Parliament Pulse Nepal TV"
 ]
 
+TOPIC_LABELS = [
+    ("water", "Water Management"),
+    ("खाने पानी", "Water Management"),
+    ("जलस्रोत", "Water Resources"),
+    ("बजेट", "Budget and Planning"),
+    ("विनियोजन", "Budget and Planning"),
+    ("कानुन", "Law and Legislation"),
+    ("विधेयक", "Law and Legislation"),
+    ("संशोधन", "Law and Legislation"),
+    ("शिक्षा", "Education"),
+    ("स्वास्थ्य", "Health"),
+    ("रोजगारी", "Employment"),
+    ("महँगी", "Cost of Living"),
+    ("सुरक्षा", "Public Security"),
+    ("सीमा", "Border and Security"),
+    ("सुशासन", "Governance and Public Administration"),
+    ("भ्रष्टाचार", "Corruption and Accountability"),
+    ("अनियमितता", "Public Accountability"),
+    ("विकास", "Development and Infrastructure"),
+    ("समिति", "Parliamentary Committee Discussion"),
+    ("प्रतिवेदन", "Parliamentary Report"),
+]
+
+def fallback_topic(text):
+    text = clean(text)
+    matches = []
+    lowered = text.lower()
+    for needle, label in TOPIC_LABELS:
+        if needle.lower() in lowered and label not in matches:
+            matches.append(label)
+    if matches:
+        return matches[0]
+    return "Parliamentary Discussion in Nepal"
+
+def usable_english_summary(text):
+    text = clean(text)
+    if len(text) < 12:
+        return ""
+    letters = re.findall(r"[A-Za-z]", text)
+    return text if len(letters) >= max(8, len(text) * 0.35) else ""
+
 def clean(s):
     return re.sub(r"\s+", " ", str(s or "")).strip()
 
@@ -28,7 +69,8 @@ def build(story, kind, index, summaries):
         if summary:
             break
 
-    safe_topic = re.sub(r"[^A-Za-z0-9 ,&()\-]", "", summary).strip()
+    safe_topic = re.sub(r"[^A-Za-z0-9 ,&()\-]", "", usable_english_summary(summary)).strip()
+    topic_label = fallback_topic(issue)
     hook = story.get("opening_hook") or {}
     hook_text = clean(hook.get("text"))
     if kind == "long":
@@ -37,7 +79,7 @@ def build(story, kind, index, summaries):
             title = f"{speaker_text} | {safe_topic[:55]}"
     else:
         speaker = speakers[0] if speakers else clean(story.get("speaker")) or "Nepal Parliament"
-        title = f"{speaker} | Parliament Speech in Nepal"
+        title = f"{speaker} | {topic_label}"
         if safe_topic:
             title = f"{speaker} | {safe_topic[:60]}"
 
@@ -47,7 +89,7 @@ def build(story, kind, index, summaries):
         f"House: {', '.join(houses) if houses else 'Federal Parliament'}\n"
         f"Format: {'multi-speaker parliamentary discussion' if kind == 'long' else 'short parliamentary highlight'}\n"
         f"Opening approach: {hook_text or 'strongest verified parliamentary moment'}\n\n"
-        f"Topic context: {summary or issue}\n\n"
+        f"Topic context: {safe_topic or topic_label}\n\n"
         "Source: Official Parliament of Nepal video archive. "
         "This edited clip removes non-substantive portions while preserving the meaning of the parliamentary statements. "
         "English subtitles are provided for accessibility."
