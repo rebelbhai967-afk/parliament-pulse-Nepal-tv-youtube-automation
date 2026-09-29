@@ -36,7 +36,7 @@ def choose_hook(text):
 
 def enrich_piece(piece):
     piece = dict(piece)
-    hook = choose_hook(piece.get("text", ""))
+    hook = choose_hook(piece.get("hook_text") or piece.get("text", ""))
     start = float(piece.get("start", 0))
     end = float(piece.get("end", start))
     hook_duration = min(8.0, max(4.0, end - start - 2.0))
