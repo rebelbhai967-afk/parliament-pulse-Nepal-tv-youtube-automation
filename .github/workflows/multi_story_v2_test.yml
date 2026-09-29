@@ -31,7 +31,7 @@ jobs:
 
       - name: Compile editorial pipeline
         run: |
-          python -m py_compile src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/render_stories.py src/validate_metadata.py
+          python -m py_compile src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/render_stories.py src/validate_metadata.py src/editorial_gate.py
 
       - name: Discover both Parliament Houses
         run: |
@@ -84,6 +84,10 @@ jobs:
       - name: Validate metadata, hooks and neutrality
         run: |
           python src/validate_metadata.py data/metadata_v2
+
+      - name: Run editorial safety and repetition gate
+        run: |
+          python src/editorial_gate.py data/multi_story_selection.json data/metadata_v2
 
       - name: Create content publication ledger
         run: |
