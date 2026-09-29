@@ -90,6 +90,14 @@ def main(selection_path, masters_dir, thumbnails_dir):
 
     long_speakers = set()
     short_speakers = set()
+    long_houses = set()
+    generic_speakers = {
+        "", "zero hour", "special hour", "jawaf", "prastav prastut",
+        "ninrnayartha prastut", "nirdeshan", "samjhauta pes", "summary",
+        "first meeting", "meeting", "sammananiye sabhamukh", "video",
+        "watch video", "pratibedan pes", "pratibedhan pes", "national anthem",
+        "bidhyak prastut", "सम्माननीय अध्यक्ष", "शून्य समय",
+    }
     used_long_sources = set()
     used_short_sources = set()
 
@@ -109,7 +117,10 @@ def main(selection_path, masters_dir, thumbnails_dir):
             errors.append(str(exc))
 
         speakers = clean_list(story.get("speakers", []))
+        if not speakers or any(s in generic_speakers for s in speakers):
+            errors.append(f"Long {i}: speaker attribution is missing or generic")
         long_speakers.update(speakers)
+        long_houses.update(clean_list(story.get("houses", [])))
         for piece in story.get("pieces", []):
             source = str(piece.get("video", piece.get("source_video", ""))).strip()
             if source:
@@ -135,7 +146,11 @@ def main(selection_path, masters_dir, thumbnails_dir):
 
         speaker = str(story.get("speaker", "")).strip()
         if speaker:
+            if speaker.lower() in generic_speakers:
+                errors.append(f"Short {i}: generic speaker attribution is not allowed")
             short_speakers.add(speaker.lower())
+        else:
+            errors.append(f"Short {i}: missing verified speaker attribution")
 
         source = str(
             story.get("video", story.get("source_video", ""))
@@ -147,6 +162,9 @@ def main(selection_path, masters_dir, thumbnails_dir):
         if not thumb.exists() or thumb.stat().st_size < 5_000:
             errors.append(f"Missing thumbnail: {thumb}")
 
+    if len(long_houses & {"national assembly", "house of representatives"}) >= 1 and len(long_houses) >= 2:
+        if len(long_houses & {"national assembly", "house of representatives"}) < 2:
+            errors.append("Long stories should cover both National Assembly and House of Representatives when both have eligible named-speaker sources.")
     if len(used_short_sources) < min(2, len(shorts)):
         errors.append(
             f"Short-source diversity is low: {len(used_short_sources)} unique sources"
