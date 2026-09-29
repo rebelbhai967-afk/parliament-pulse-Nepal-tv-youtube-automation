@@ -127,6 +127,8 @@ def main(input_dir, output_file):
         video = str(Path("data/videos") / (transcript_file.stem + ".mp4"))
         vm = meta.get(video, {})
         speaker = clean(vm.get("speaker"))
+        if not speaker:
+            continue
         for i, seg in enumerate(segments):
             if not clean(seg.get("nepali")):
                 continue
@@ -151,6 +153,9 @@ def main(input_dir, output_file):
         segments = data.get("segments", [])
         video = str(Path("data/videos") / (transcript_file.stem + ".mp4"))
         vm = meta.get(video, {})
+        speaker = clean(vm.get("speaker"))
+        if not speaker:
+            continue
         for w in build_long_windows(segments):
             w.update({"video": video, "transcript": str(transcript_file),
                       "speaker": clean(vm.get("speaker")), "house": vm.get("house", ""),
