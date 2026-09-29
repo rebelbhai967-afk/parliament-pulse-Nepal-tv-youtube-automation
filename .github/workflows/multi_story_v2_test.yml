@@ -29,6 +29,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Compile editorial pipeline
+        run: |
+          python -m py_compile src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/render_stories.py src/validate_metadata.py
+
       - name: Discover both Parliament Houses
         run: |
           mkdir -p data
