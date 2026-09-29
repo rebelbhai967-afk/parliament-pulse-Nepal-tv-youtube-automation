@@ -28,12 +28,12 @@ def build(story, kind, index):
     if kind == "long":
         title = f"{speaker_text} | Key Parliamentary Debate in Nepal"
     else:
-        speaker = speakers[0] if speakers else "Nepal Parliament"
+        speaker = speakers[0] if speakers else clean(story.get("speaker")) or "Nepal Parliament"
         title = f"{speaker} | Key Parliament Speech in Nepal"
 
     title = re.sub(r"\s+", " ", title).strip()[:100]
     description = (
-        f"{speaker_text} discusses an important parliamentary issue in Nepal.\n\n"
+        f"{speaker_text} discusses a documented parliamentary issue in Nepal.\n\n"
         f"House: {', '.join(houses) if houses else 'Federal Parliament'}\n"
         f"Format: {'multi-speaker parliamentary compilation' if kind == 'long' else 'short parliamentary highlight'}\n\n"
         f"Main topic context: {issue}\n\n"
