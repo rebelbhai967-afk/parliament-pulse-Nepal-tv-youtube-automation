@@ -81,6 +81,11 @@ jobs:
           mkdir -p output/multi_story_masters
           python src/assemble_stories.py data/multi_story_selection.json output/multi_story_pieces/.pieces output/multi_story_masters
 
+      - name: Generate English-first thumbnails
+        run: |
+          mkdir -p output/multi_story_thumbnails
+          python src/generate_thumbnails_v2.py data/metadata_v2 output/multi_story_masters output/multi_story_thumbnails
+
       - name: Verify story targets
         run: |
           python - <<'PY'
