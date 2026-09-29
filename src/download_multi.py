@@ -182,7 +182,23 @@ def main(collections_json, output_dir, max_collections=4, max_videos=20):
                 continue
             seen_pages.add(page["page"])
             speaker = page.get("speaker") or speaker_from_page_title(page.get("link_label", ""))
-            page_candidates.append({"collection": collection, "page": page, "speaker": speaker})
+            # Resolve the actual video page title before ranking candidates. Parliament
+            # collection labels are often procedural (e.g. "Zero Hour"), while the
+            # individual video page title can contain the member's real name.
+            page_source = None
+            page_title = ""
+            try:
+                page_source, page_title = source_from_page(page["page"], s)
+            except Exception as exc:
+                print("Page metadata failed:", page["page"], exc)
+            speaker = speaker or speaker_from_page_title(page_title)
+            page_candidates.append({
+                "collection": collection,
+                "page": page,
+                "speaker": speaker,
+                "page_title": page_title,
+                "source": page_source,
+            })
 
     named = [x for x in page_candidates if x["speaker"]]
     unnamed = [x for x in page_candidates if not x["speaker"]]
@@ -214,7 +230,10 @@ def main(collections_json, output_dir, max_collections=4, max_videos=20):
         collection = item["collection"]
         page = item["page"]
         try:
-            source, page_title = source_from_page(page["page"], s)
+            source = item.get("source")
+            page_title = item.get("page_title", "")
+            if not source:
+                source, page_title = source_from_page(page["page"], s)
             if not source:
                 print("Skipping: no video source", page["page"])
                 continue
