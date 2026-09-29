@@ -61,26 +61,48 @@ def build_candidate(segments, i, min_s=60, max_s=180):
     opening_text = " ".join(clean(s.get("nepali")) for s in segments[left:min(left + 2, right + 1)])
     return {"start": round(start,3), "end": round(end,3), "duration": round(end-start,3), "score": score(text), "text": text, "hook_text": opening_text}
 
-def build_long_windows(segments, max_windows=4):
+def build_long_windows(segments, max_windows=3):
+    """Create coherent 3–5 minute windows around strong transcript anchors."""
     if not segments:
         return []
     total_start = float(segments[0].get("start", 0))
     total_end = float(segments[-1].get("end", total_start))
     if total_end - total_start < 181:
         return []
-    duration = total_end - total_start
+
+    anchors = []
+    for i, seg in enumerate(segments):
+        text = clean(seg.get("nepali"))
+        if text:
+            anchors.append((score(text), float(seg.get("start", 0)), i))
+    anchors.sort(reverse=True)
+
     windows = []
-    for frac in (0.0, 0.25, 0.5, 0.75)[:max_windows]:
-        start_target = total_start + min(max(0, duration - 181), duration * frac)
-        end_target = min(total_end, start_target + min(300, duration))
+    for _, anchor_start, _ in anchors[:max_windows * 4]:
+        # Build roughly 3–5 minutes around the strongest point while staying
+        # inside the actual Parliament recording.
+        start_target = max(total_start, min(anchor_start - 45, total_end - 240))
+        end_target = min(total_end, start_target + 240)
+        if end_target - start_target < 181:
+            start_target = max(total_start, end_target - 181)
+
         left = min(range(len(segments)), key=lambda j: abs(float(segments[j].get("start", 0)) - start_target))
-        right = next((j for j in range(left, len(segments)) if float(segments[j].get("end", 0)) >= end_target), len(segments)-1)
+        right = next(
+            (j for j in range(left, len(segments))
+             if float(segments[j].get("end", 0)) >= end_target),
+            len(segments) - 1,
+        )
         start = float(segments[left].get("start", start_target))
         end = float(segments[right].get("end", end_target))
-        if 181 <= end - start <= 360:
-            text = " ".join(clean(s.get("nepali")) for s in segments[left:right+1])
+        if 181 <= end - start <= 300:
+            text = " ".join(clean(s.get("nepali")) for s in segments[left:right + 1])
             hook_text = " ".join(clean(s.get("nepali")) for s in segments[left:min(left + 2, right + 1)])
-            windows.append({"start": round(start,3), "end": round(end,3), "duration": round(end-start,3), "score": score(text), "text": text, "hook_text": hook_text})
+            windows.append({
+                "start": round(start, 3), "end": round(end, 3),
+                "duration": round(end - start, 3),
+                "score": score(text), "text": text, "hook_text": hook_text,
+            })
+
     unique = {}
     for w in windows:
         unique[(w["start"], w["end"])] = w
@@ -149,38 +171,51 @@ def main(input_dir, output_file):
     used = set()
     long_source_count = {}
     used_ranges = {}
+    houses_needed = sorted({clean(x.get("house")) for x in long_candidates if clean(x.get("house"))})
 
-    # Prefer coherent single-source parliamentary speeches.
-    for candidate in long_candidates:
-        video = candidate["video"]
-        if long_source_count.get(video, 0) >= 2:
-            continue
-        ranges = used_ranges.setdefault(video, [])
-        if any(abs(candidate["start"] - s) < 45 for s, e in ranges):
-            continue
-        long_stories.append(enrich_piece({
-            "pieces": [candidate], "duration": candidate["duration"], "score": candidate["score"],
-            "speakers": [candidate["speaker"]] if candidate["speaker"] else [],
-            "houses": [candidate["house"]] if candidate["house"] else [],
-            "topic_text": candidate["text"],
-        }))
-        long_source_count[video] = long_source_count.get(video, 0) + 1
-        ranges.append((candidate["start"], candidate["end"]))
-        used.add(video)
+    # Prefer one strong long story per source, balancing both Houses when possible.
+    for preferred_house in (houses_needed + [""]):
         if len(long_stories) >= 12:
             break
+        for candidate in long_candidates:
+            if len(long_stories) >= 12:
+                break
+            video = candidate["video"]
+            house = clean(candidate.get("house"))
+            if preferred_house and house != preferred_house:
+                continue
+            if long_source_count.get(video, 0) >= 1:
+                continue
+            ranges = used_ranges.setdefault(video, [])
+            if any(abs(candidate["start"] - s) < 60 for s, e in ranges):
+                continue
+            long_stories.append(enrich_piece({
+                "pieces": [candidate], "duration": candidate["duration"], "score": candidate["score"],
+                "speakers": [candidate["speaker"]] if candidate["speaker"] else [],
+                "houses": [candidate["house"]] if candidate["house"] else [],
+                "topic_text": candidate["text"],
+            }))
+            long_source_count[video] = 1
+            ranges.append((candidate["start"], candidate["end"]))
+            used.add(video)
 
-    # Fallback: combine related short speech windows rather than fabricate a story.
+    # If fewer than 12 coherent long windows exist, combine related short
+    # speech windows as a clearly sourced parliamentary discussion.
     if len(long_stories) < 12:
         for anchor in pool:
             if len(long_stories) >= 12:
                 break
+            if anchor["video"] in used:
+                continue
             related = sorted(
-                [x for x in pool if x["video"] != anchor["video"] and long_source_count.get(x["video"], 0) < 2],
+                [x for x in pool if x["video"] not in used and x["video"] != anchor["video"]],
                 key=lambda x: (similarity(anchor["text"], x["text"]), x["score"]), reverse=True)
             for other in related:
                 total = anchor["duration"] + other["duration"]
-                if total > 600 or similarity(anchor["text"], other["text"]) < 0.02:
+                if total > 600:
+                    continue
+                sim = similarity(anchor["text"], other["text"])
+                if sim < 0.02:
                     continue
                 long_stories.append(enrich_piece({
                     "pieces": [anchor, other], "duration": round(total,3),
@@ -189,8 +224,6 @@ def main(input_dir, output_file):
                     "houses": sorted({x["house"] for x in (anchor, other) if x["house"]}),
                     "topic_text": anchor["text"] + " " + other["text"],
                 }))
-                long_source_count[anchor["video"]] = long_source_count.get(anchor["video"], 0) + 1
-                long_source_count[other["video"]] = long_source_count.get(other["video"], 0) + 1
                 used.update([anchor["video"], other["video"]])
                 break
 
