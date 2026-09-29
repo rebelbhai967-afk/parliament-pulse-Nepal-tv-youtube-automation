@@ -5,7 +5,7 @@ on:
 
 jobs:
   multi-story-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
       WHISPER_BEAM_SIZE: "1"
@@ -40,7 +40,7 @@ jobs:
 
       - name: Download latest collections from both Houses
         run: |
-          python src/download_multi.py data/parliament_collections.json data/videos 4 24
+          python src/download_multi.py data/parliament_collections.json data/videos 8 24
 
       - name: Verify multi-source download
         run: |
@@ -60,7 +60,7 @@ jobs:
           named=[x for x in items if x.get("speaker")]
           print("Speaker-attributed source videos:", len(named))
           if len(named) < 6:
-              raise RuntimeError(f"Need at least 6 speaker-attributed source videos for the requested 2 Long + 2 Short build; found {len(named)}.")
+              raise RuntimeError(f"Need at least 6 verified named-speaker source videos for the requested 2 Long + 2 Short build; found {len(named)}.")
           PY
 
       - name: Transcribe all candidate videos
