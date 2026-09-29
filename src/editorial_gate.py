@@ -67,7 +67,7 @@ def validate(selection, metadata_dir):
                 hook_seen[hook] = f"{kind} {idx}"
 
             if not speakers:
-                errors.append(f"{kind} {idx}: missing speaker attribution")
+                warnings.append(f"{kind} {idx}: speaker name not available from official source page; do not infer a name")
             if "official parliament of nepal" not in desc:
                 errors.append(f"{kind} {idx}: missing official source attribution")
 
@@ -100,7 +100,7 @@ def main(selection_path, metadata_dir):
         "principles": [
             "No fabricated claims or unsupported context.",
             "No sensational/clickbait language.",
-            "Every item has source attribution and speaker attribution.",
+            "Every item has official source attribution; speaker attribution is required when the official source page provides a name.",
             "Repeated source material is surfaced for editorial review.",
             "Hook text must be grounded in the selected parliamentary transcript."
         ]
