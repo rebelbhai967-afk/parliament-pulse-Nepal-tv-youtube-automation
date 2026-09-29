@@ -127,8 +127,6 @@ def main(input_dir, output_file):
         video = str(Path("data/videos") / (transcript_file.stem + ".mp4"))
         vm = meta.get(video, {})
         speaker = clean(vm.get("speaker"))
-        if not speaker:
-            continue
         for i, seg in enumerate(segments):
             if not clean(seg.get("nepali")):
                 continue
@@ -154,8 +152,6 @@ def main(input_dir, output_file):
         video = str(Path("data/videos") / (transcript_file.stem + ".mp4"))
         vm = meta.get(video, {})
         speaker = clean(vm.get("speaker"))
-        if not speaker:
-            continue
         for w in build_long_windows(segments):
             w.update({"video": video, "transcript": str(transcript_file),
                       "speaker": clean(vm.get("speaker")), "house": vm.get("house", ""),
@@ -182,9 +178,8 @@ def main(input_dir, output_file):
         if house and house not in houses:
             houses.append(house)
 
-    # If both Houses have eligible named-speaker windows, require one Long
-    # story from each House. This prevents a technically valid 2+2 build from
-    # silently becoming single-House content.
+    # Prefer one Long story from each House. Speaker attribution is used when
+    # available, but an unattributed source is never mislabeled as a speaker.
     house_order = []
     for candidate in long_candidates:
         house = clean(candidate.get("house"))
@@ -194,11 +189,11 @@ def main(input_dir, output_file):
     preferred_houses = house_order[:2] if len(house_order) >= 2 else house_order
 
     for preferred_house in preferred_houses:
-        for candidate in long_candidates:
+        house_candidates = [c for c in long_candidates if clean(c.get("house")) == preferred_house]
+        house_candidates.sort(key=lambda c: (1 if clean(c.get("speaker")) else 0, c.get("score", 0)), reverse=True)
+        for candidate in house_candidates:
             if len(long_stories) >= 2:
                 break
-            if clean(candidate.get("house")) != preferred_house:
-                continue
             video = candidate["video"]
             if video in used or long_source_count.get(video, 0) >= 1:
                 continue
@@ -209,7 +204,7 @@ def main(input_dir, output_file):
                 "pieces": [candidate],
                 "duration": candidate["duration"],
                 "score": candidate["score"],
-                "speakers": [candidate["speaker"]],
+                "speakers": [candidate["speaker"]] if candidate.get("speaker") else [],
                 "houses": [candidate["house"]],
                 "topic_text": candidate["text"],
             }))
@@ -268,7 +263,8 @@ def main(input_dir, output_file):
 
     short_stories = []
     short_used = set()
-    for c in pool:
+    short_pool = sorted(pool, key=lambda c: (1 if clean(c.get("speaker")) else 0, c.get("score", 0)), reverse=True)
+    for c in short_pool:
         if c["video"] in used or c["video"] in short_used:
             continue
         if c["duration"] <= 89:
@@ -310,6 +306,7 @@ def main(input_dir, output_file):
         "target": {"long": 2, "short": 2},
         "selection_rules": [
             "Candidate pool comes from both National Assembly and House of Representatives.",
+            "Verified speaker names are preferred; unattributed source pages are allowed only when the official page does not expose a member name, and are never relabeled as speakers.",
             "Long stories are 181–600 seconds and use distinct parliamentary source windows.",
             "Short/Reel stories are under 90 seconds and are selected from stories not used by the Long set.",
             "Speaker names come from official Parliament video-page labels when available.",
