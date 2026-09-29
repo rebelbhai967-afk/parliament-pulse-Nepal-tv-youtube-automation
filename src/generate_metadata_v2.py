@@ -29,6 +29,8 @@ def build(story, kind, index, summaries):
             break
 
     safe_topic = re.sub(r"[^A-Za-z0-9 ,&()\-]", "", summary).strip()
+    hook = story.get("opening_hook") or {}
+    hook_text = clean(hook.get("text"))
     if kind == "long":
         title = f"{speaker_text} | Parliament Discussion in Nepal"
         if safe_topic:
@@ -43,7 +45,8 @@ def build(story, kind, index, summaries):
     description = (
         f"{speaker_text} discusses a documented parliamentary issue in Nepal.\n\n"
         f"House: {', '.join(houses) if houses else 'Federal Parliament'}\n"
-        f"Format: {'multi-speaker parliamentary discussion' if kind == 'long' else 'short parliamentary highlight'}\n\n"
+        f"Format: {'multi-speaker parliamentary discussion' if kind == 'long' else 'short parliamentary highlight'}\n"
+        f"Opening approach: {hook_text or 'strongest verified parliamentary moment'}\n\n"
         f"Topic context: {summary or issue}\n\n"
         "Source: Official Parliament of Nepal video archive. "
         "This edited clip removes non-substantive portions while preserving the meaning of the parliamentary statements. "
@@ -63,7 +66,9 @@ def build(story, kind, index, summaries):
         "index": index, "title": title, "description": description,
         "tags": tags, "hashtags": hashtags, "category_id": "25", "privacy": "private",
         "speakers": speakers, "houses": houses, "story_text": issue,
-        "topic_summary": summary, "community_prompt": community_prompt, "duration": story.get("duration"), "kind": kind
+        "topic_summary": summary, "community_prompt": community_prompt,
+        "hook": hook, "hook_strategy": story.get("hook_strategy", "strongest_available"),
+        "duration": story.get("duration"), "kind": kind
     }
 
 def main(selection, output, summary_file=None):
