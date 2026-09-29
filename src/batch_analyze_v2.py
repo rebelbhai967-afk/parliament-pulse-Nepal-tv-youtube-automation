@@ -182,38 +182,61 @@ def main(input_dir, output_file):
         if house and house not in houses:
             houses.append(house)
 
-    # Round-robin Houses so one House does not silently dominate the daily set.
-    # If one House has fewer eligible windows, the other fills the remaining slots.
-    while len(long_stories) < 2:
-        made_progress = False
-        for preferred_house in houses + [""]:
-            for candidate in long_candidates:
-                if len(long_stories) >= 2:
-                    break
-                video = candidate["video"]
-                house = clean(candidate.get("house"))
-                if preferred_house and house != preferred_house:
-                    continue
-                if video in used or long_source_count.get(video, 0) >= 1:
-                    continue
-                ranges = used_ranges.setdefault(video, [])
-                if any(abs(candidate["start"] - s) < 60 for s, e in ranges):
-                    continue
-                long_stories.append(enrich_piece({
-                    "pieces": [candidate],
-                    "duration": candidate["duration"],
-                    "score": candidate["score"],
-                    "speakers": [candidate["speaker"]] if candidate["speaker"] else [],
-                    "houses": [candidate["house"]] if candidate["house"] else [],
-                    "topic_text": candidate["text"],
-                }))
-                long_source_count[video] = 1
-                ranges.append((candidate["start"], candidate["end"]))
-                used.add(video)
-                made_progress = True
+    # If both Houses have eligible named-speaker windows, require one Long
+    # story from each House. This prevents a technically valid 2+2 build from
+    # silently becoming single-House content.
+    house_order = []
+    for candidate in long_candidates:
+        house = clean(candidate.get("house"))
+        if house and house not in house_order:
+            house_order.append(house)
+
+    preferred_houses = house_order[:2] if len(house_order) >= 2 else house_order
+
+    for preferred_house in preferred_houses:
+        for candidate in long_candidates:
+            if len(long_stories) >= 2:
                 break
-        if not made_progress:
+            if clean(candidate.get("house")) != preferred_house:
+                continue
+            video = candidate["video"]
+            if video in used or long_source_count.get(video, 0) >= 1:
+                continue
+            ranges = used_ranges.setdefault(video, [])
+            if any(abs(candidate["start"] - s) < 60 for s, e in ranges):
+                continue
+            long_stories.append(enrich_piece({
+                "pieces": [candidate],
+                "duration": candidate["duration"],
+                "score": candidate["score"],
+                "speakers": [candidate["speaker"]],
+                "houses": [candidate["house"]],
+                "topic_text": candidate["text"],
+            }))
+            long_source_count[video] = 1
+            ranges.append((candidate["start"], candidate["end"]))
+            used.add(video)
             break
+
+    # Fill any remaining Long slot from the strongest unused named-speaker
+    # window if one House does not have an eligible long recording.
+    if len(long_stories) < 2:
+        for candidate in long_candidates:
+            if len(long_stories) >= 2:
+                break
+            video = candidate["video"]
+            if video in used or long_source_count.get(video, 0) >= 1:
+                continue
+            long_stories.append(enrich_piece({
+                "pieces": [candidate],
+                "duration": candidate["duration"],
+                "score": candidate["score"],
+                "speakers": [candidate["speaker"]],
+                "houses": [candidate["house"]] if candidate["house"] else [],
+                "topic_text": candidate["text"],
+            }))
+            long_source_count[video] = 1
+            used.add(video)
 
     # If fewer than 12 coherent long windows exist, combine related short
     # speech windows as a clearly sourced parliamentary discussion.
