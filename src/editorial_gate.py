@@ -49,6 +49,11 @@ def validate(selection, metadata_dir):
 
             if not sources:
                 errors.append(f"{kind} {idx}: no source video")
+            if not story.get("houses"):
+                errors.append(f"{kind} {idx}: missing Parliament House attribution")
+            for piece in story.get("pieces", []):
+                if not norm(piece.get("source_page")):
+                    errors.append(f"{kind} {idx}: missing official source page for a selected piece")
             for src in sources:
                 source_seen.setdefault(src, []).append(f"{kind} {idx}")
 
