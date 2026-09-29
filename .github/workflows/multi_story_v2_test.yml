@@ -149,8 +149,8 @@ jobs:
                   raise RuntimeError(f"Short duration rule failed: {i}")
               if not (s.get("opening_hook") or {}).get("text"):
                   raise RuntimeError(f"Short hook missing: {i}")
-          if len(longs) < 2 or len(shorts) < 2:
-              raise RuntimeError("V2 did not produce the requested 2 Long + 2 Short stories.")
+          if len(longs) != 2 or len(shorts) != 2:
+              raise RuntimeError(f"V2 target mismatch: expected exactly 2 Long + 2 Short, found {len(longs)} Long + {len(shorts)} Short.")
           PY
 
       - name: Upload V2 selection and metadata
