@@ -20,7 +20,7 @@ def probe_duration(path):
     return float(result.stdout.strip())
 
 
-def check_video(path, minimum, maximum):
+def check_video(path, minimum, maximum, expected_width=None, expected_height=None):
     if not path.exists() or path.stat().st_size < 10_000:
         raise RuntimeError(f"Missing or suspiciously small video: {path}")
     duration = probe_duration(path)
@@ -29,6 +29,25 @@ def check_video(path, minimum, maximum):
             f"Rendered duration outside rule: {path.name} = {duration:.1f}s "
             f"(expected {minimum}-{maximum}s)"
         )
+    if expected_width and expected_height:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "stream=width,height",
+                "-of", "csv=s=x:p=0",
+                str(path),
+            ],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"ffprobe dimensions failed: {path}")
+        dimensions = result.stdout.strip()
+        expected = f"{expected_width}x{expected_height}"
+        if dimensions != expected:
+            raise RuntimeError(
+                f"Wrong dimensions: {path.name} = {dimensions}, expected {expected}"
+            )
     return duration
 
 
@@ -63,7 +82,7 @@ def main(selection_path, masters_dir, thumbnails_dir):
     for i, story in enumerate(longs, 1):
         path = masters / f"long_{i:02d}.mp4"
         try:
-            duration = check_video(path, 181, 600)
+            duration = check_video(path, 181, 600, 1920, 1080)
             print(f"LONG {i:02d}: {duration:.1f}s OK")
         except Exception as exc:
             errors.append(str(exc))
@@ -82,7 +101,7 @@ def main(selection_path, masters_dir, thumbnails_dir):
     for i, story in enumerate(shorts, 1):
         path = masters / f"short_{i:02d}.mp4"
         try:
-            duration = check_video(path, 1, 89.999)
+            duration = check_video(path, 1, 89.999, 1080, 1920)
             print(f"SHORT {i:02d}: {duration:.1f}s OK")
         except Exception as exc:
             errors.append(str(exc))
