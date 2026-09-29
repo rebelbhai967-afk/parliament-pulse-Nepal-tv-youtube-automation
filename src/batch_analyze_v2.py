@@ -165,7 +165,17 @@ def main(input_dir, output_file):
         if c["video"] in used or c["video"] in short_used:
             continue
         if c["duration"] <= 89:
-            short_stories.append(c)
+            piece = dict(c)
+            short_stories.append({
+                "pieces": [piece],
+                "duration": piece["duration"],
+                "score": piece["score"],
+                "speakers": [piece["speaker"]] if piece["speaker"] else [],
+                "speaker": piece["speaker"],
+                "houses": [piece["house"]] if piece["house"] else [],
+                "topic_text": piece["text"],
+                "video": piece["video"],
+            })
             short_used.add(c["video"])
         else:
             # trim to a centered 60-85 second window
@@ -174,13 +184,22 @@ def main(input_dir, output_file):
             c2["start"] = round(max(0, mid - 38), 3)
             c2["end"] = round(min(c["end"], mid + 38), 3)
             c2["duration"] = round(c2["end"] - c2["start"], 3)
-            short_stories.append(c2)
+            short_stories.append({
+                "pieces": [c2],
+                "duration": c2["duration"],
+                "score": c2["score"],
+                "speakers": [c2["speaker"]] if c2["speaker"] else [],
+                "speaker": c2["speaker"],
+                "houses": [c2["house"]] if c2["house"] else [],
+                "topic_text": c2["text"],
+                "video": c2["video"],
+            })
             short_used.add(c["video"])
         if len(short_stories) >= 12:
             break
 
     result = {
-        "model": "parliament-multi-story-v1",
+        "model": "parliament-multi-story-v2",
         "target": {"long": 12, "short": 12},
         "selection_rules": [
             "Candidate pool comes from both National Assembly and House of Representatives.",
