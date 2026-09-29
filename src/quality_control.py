@@ -80,6 +80,11 @@ def main(selection_path, masters_dir, thumbnails_dir):
     used_short_sources = set()
 
     for i, story in enumerate(longs, 1):
+        hook = story.get("opening_hook") or {}
+        if not hook.get("text"):
+            errors.append(f"Long {i}: missing opening hook")
+        if float(hook.get("score", 0)) < 0:
+            errors.append(f"Long {i}: invalid hook score")
         path = masters / f"long_{i:02d}.mp4"
         try:
             duration = check_video(path, 181, 600, 1920, 1080)
@@ -106,6 +111,10 @@ def main(selection_path, masters_dir, thumbnails_dir):
         except Exception as exc:
             errors.append(str(exc))
 
+        hook = story.get("opening_hook") or {}
+        if not hook.get("text"):
+            errors.append(f"Short {i}: missing opening hook")
+
         speaker = str(story.get("speaker", "")).strip()
         if speaker:
             short_speakers.add(speaker.lower())
@@ -123,6 +132,12 @@ def main(selection_path, masters_dir, thumbnails_dir):
     if len(used_short_sources) < min(12, len(shorts)):
         errors.append(
             f"Short-source diversity is low: {len(used_short_sources)} unique sources"
+        )
+
+    overlap_sources = used_long_sources & used_short_sources
+    if overlap_sources:
+        errors.append(
+            "Short/Long source overlap detected: " + ", ".join(sorted(overlap_sources)[:10])
         )
 
     duplicate_speakers = [
