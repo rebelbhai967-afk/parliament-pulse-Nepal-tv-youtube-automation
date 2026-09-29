@@ -40,7 +40,7 @@ jobs:
 
       - name: Download latest collections from both Houses
         run: |
-          python src/download_multi.py data/parliament_collections.json data/videos 8 60
+          python src/download_multi.py data/parliament_collections.json data/videos 4 24
 
       - name: Verify multi-source download
         run: |
@@ -51,16 +51,16 @@ jobs:
           houses=sorted({x.get("house") for x in items if x.get("house")})
           print("Videos:", len(items))
           print("Houses:", houses)
-          if len(items) < 48:
-              raise RuntimeError(f"Need at least 48 distinct source videos for a safer 12 Long + 12 Short build with source diversity; found {len(items)}.")
+          if len(items) < 12:
+              raise RuntimeError(f"Need at least 12 distinct source videos for the 2 Long + 2 Short daily build; found {len(items)}.")
           if len(houses) < 2:
               raise RuntimeError("Both National Assembly and House of Representatives are required.")
           if len({x.get("page") for x in items}) != len(items):
               raise RuntimeError("Duplicate Parliament source pages detected.")
           named=[x for x in items if x.get("speaker")]
           print("Speaker-attributed source videos:", len(named))
-          if len(named) < 24:
-              raise RuntimeError(f"Need at least 24 speaker-attributed source videos for the requested 12 Long + 12 Short build; found {len(named)}.")
+          if len(named) < 6:
+              raise RuntimeError(f"Need at least 6 speaker-attributed source videos for the requested 2 Long + 2 Short build; found {len(named)}.")
           PY
 
       - name: Transcribe all candidate videos
@@ -149,8 +149,8 @@ jobs:
                   raise RuntimeError(f"Short duration rule failed: {i}")
               if not (s.get("opening_hook") or {}).get("text"):
                   raise RuntimeError(f"Short hook missing: {i}")
-          if len(longs) < 12 or len(shorts) < 12:
-              raise RuntimeError("V2 did not produce the requested 12 Long + 12 Short stories.")
+          if len(longs) < 2 or len(shorts) < 2:
+              raise RuntimeError("V2 did not produce the requested 2 Long + 2 Short stories.")
           PY
 
       - name: Upload V2 selection and metadata
