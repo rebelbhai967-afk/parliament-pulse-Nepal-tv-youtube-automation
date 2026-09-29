@@ -16,7 +16,9 @@ def render_segment(piece, subtitle_dir, output, kind, start, duration):
     command = ["ffmpeg", "-y", "-ss", str(start), "-i", str(source), "-t", str(duration)]
     filters = []
     if kind == "short":
-        filters += ["scale=1080:-2:force_original_aspect_ratio=decrease", "pad=1080:1920:(ow-iw)/2:(oh-ih)/2"]
+        # Fill the vertical frame instead of letterboxing a 16:9 Parliament
+        # recording with large black bars. Keep the central speaker area.
+        filters += ["scale=-2:1920:force_original_aspect_ratio=increase", "crop=1080:1920:(iw-1080)/2:0"]
     else:
         filters += ["scale=1920:1080:force_original_aspect_ratio=decrease", "pad=1920:1080:(ow-iw)/2:(oh-ih)/2"]
     if srt.exists():
