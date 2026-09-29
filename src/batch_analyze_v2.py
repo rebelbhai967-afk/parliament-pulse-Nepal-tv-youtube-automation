@@ -184,11 +184,11 @@ def main(input_dir, output_file):
 
     # Round-robin Houses so one House does not silently dominate the daily set.
     # If one House has fewer eligible windows, the other fills the remaining slots.
-    while len(long_stories) < 12:
+    while len(long_stories) < 2:
         made_progress = False
         for preferred_house in houses + [""]:
             for candidate in long_candidates:
-                if len(long_stories) >= 12:
+                if len(long_stories) >= 2:
                     break
                 video = candidate["video"]
                 house = clean(candidate.get("house"))
@@ -217,9 +217,9 @@ def main(input_dir, output_file):
 
     # If fewer than 12 coherent long windows exist, combine related short
     # speech windows as a clearly sourced parliamentary discussion.
-    if len(long_stories) < 12:
+    if len(long_stories) < 2:
         for anchor in pool:
-            if len(long_stories) >= 12:
+            if len(long_stories) >= 2:
                 break
             if anchor["video"] in used:
                 continue
@@ -279,15 +279,15 @@ def main(input_dir, output_file):
                 "video": c2["video"],
             }))
             short_used.add(c["video"])
-        if len(short_stories) >= 12:
+        if len(short_stories) >= 2:
             break
 
     result = {
         "model": "parliament-multi-story-v2-editorial-hooks",
-        "target": {"long": 12, "short": 12},
+        "target": {"long": 2, "short": 2},
         "selection_rules": [
             "Candidate pool comes from both National Assembly and House of Representatives.",
-            "Long stories are 181–600 seconds and may combine 2–4 distinct speaker/video clips.",
+            "Long stories are 181–600 seconds and use distinct parliamentary source windows.",
             "Short/Reel stories are under 90 seconds and are selected from stories not used by the Long set.",
             "Speaker names come from official Parliament video-page labels when available.",
             "Repeated speakers/videos are limited to improve coverage.",
@@ -301,8 +301,8 @@ def main(input_dir, output_file):
     }
     Path(output_file).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Candidates: {len(candidates)} | Long stories: {len(long_stories)} | Short stories: {len(short_stories)}")
-    if len(long_stories) < 4 or len(short_stories) < 4:
-        raise RuntimeError(f"Not enough diverse stories for a safe multi-story build: {len(long_stories)} long, {len(short_stories)} short.")
+    if len(long_stories) < 2 or len(short_stories) < 2:
+        raise RuntimeError(f"Not enough diverse stories for a safe 2+2 daily build: {len(long_stories)} long, {len(short_stories)} short.")
 
 
 if __name__ == "__main__":
