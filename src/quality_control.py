@@ -51,6 +51,20 @@ def check_video(path, minimum, maximum, expected_width=None, expected_height=Non
     return duration
 
 
+def has_audio(path):
+    result = subprocess.run(
+        [
+            "ffprobe", "-v", "error",
+            "-select_streams", "a:0",
+            "-show_entries", "stream=codec_name",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        capture_output=True, text=True
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
 def clean_list(values):
     return {
         str(v).strip().lower()
@@ -88,6 +102,8 @@ def main(selection_path, masters_dir, thumbnails_dir):
         path = masters / f"long_{i:02d}.mp4"
         try:
             duration = check_video(path, 181, 600, 1920, 1080)
+            if not has_audio(path):
+                errors.append(f"Long {i}: rendered master has no audio stream")
             print(f"LONG {i:02d}: {duration:.1f}s OK")
         except Exception as exc:
             errors.append(str(exc))
@@ -107,6 +123,8 @@ def main(selection_path, masters_dir, thumbnails_dir):
         path = masters / f"short_{i:02d}.mp4"
         try:
             duration = check_video(path, 1, 89.999, 1080, 1920)
+            if not has_audio(path):
+                errors.append(f"Short {i}: rendered master has no audio stream")
             print(f"SHORT {i:02d}: {duration:.1f}s OK")
         except Exception as exc:
             errors.append(str(exc))
