@@ -69,7 +69,7 @@ jobs:
           mkdir -p data/transcripts_clean
           python src/batch_clean.py data/transcripts data/transcripts_clean
 
-      - name: Select multi-speaker stories with editorial hooks
+      - name: Select editorial stories with transcript-grounded hooks
         run: |
           python src/batch_analyze_v2.py data/transcripts_clean data/multi_story_selection.json
 
@@ -109,7 +109,7 @@ jobs:
           mkdir -p output/multi_story_pieces
           python src/render_stories.py data/multi_story_selection.json data/subtitles_v2 output/multi_story_pieces
 
-      - name: Assemble multi-speaker Long and separate Short masters
+      - name: Assemble Long and separate Short masters
         run: |
           mkdir -p output/multi_story_masters
           python src/assemble_stories.py data/multi_story_selection.json output/multi_story_pieces/.pieces output/multi_story_masters
