@@ -63,7 +63,7 @@ jobs:
           mkdir -p data/transcripts_clean
           python src/batch_clean.py data/transcripts data/transcripts_clean
 
-      - name: Select multi-speaker stories
+      - name: Select multi-speaker stories with editorial hooks
         run: |
           python src/batch_analyze_v2.py data/transcripts_clean data/multi_story_selection.json
 
@@ -72,12 +72,12 @@ jobs:
           mkdir -p data/subtitles_v2
           python src/batch_translate.py data/transcripts_clean data/subtitles_v2 data/subtitles_v2/topic_summaries.json
 
-      - name: Generate human-style English metadata
+      - name: Generate human-style English metadata and hook package
         run: |
           mkdir -p data/metadata_v2
           python src/generate_metadata_v2.py data/multi_story_selection.json data/metadata_v2 data/subtitles_v2/topic_summaries.json
 
-      - name: Validate metadata quality and neutrality
+      - name: Validate metadata, hooks and neutrality
         run: |
           python src/validate_metadata.py data/metadata_v2
 
@@ -85,7 +85,7 @@ jobs:
         run: |
           python src/content_ledger.py data/multi_story_selection.json data/metadata_v2 data/content_ledger.json
 
-      - name: Render selected story pieces with English subtitles
+      - name: Render cold-open hooks and main story pieces with English subtitles
         run: |
           mkdir -p output/multi_story_pieces
           python src/render_stories.py data/multi_story_selection.json data/subtitles_v2 output/multi_story_pieces
@@ -115,13 +115,17 @@ jobs:
           print("Long stories:",len(longs))
           print("Short stories:",len(shorts))
           for i,s in enumerate(longs,1):
-              print("LONG",i,s.get("duration"),s.get("speakers"))
+              print("LONG",i,s.get("duration"),s.get("speakers"),s.get("hook_strategy"))
               if not 181 <= float(s.get("duration",0)) <= 600:
                   raise RuntimeError(f"Long duration rule failed: {i}")
+              if not (s.get("opening_hook") or {}).get("text"):
+                  raise RuntimeError(f"Long hook missing: {i}")
           for i,s in enumerate(shorts,1):
-              print("SHORT",i,s.get("duration"),s.get("speaker"))
+              print("SHORT",i,s.get("duration"),s.get("speaker"),s.get("hook_strategy"))
               if float(s.get("duration",0)) >= 90:
                   raise RuntimeError(f"Short duration rule failed: {i}")
+              if not (s.get("opening_hook") or {}).get("text"):
+                  raise RuntimeError(f"Short hook missing: {i}")
           if len(longs) < 12 or len(shorts) < 12:
               raise RuntimeError("V2 did not produce the requested 12 Long + 12 Short stories.")
           PY
