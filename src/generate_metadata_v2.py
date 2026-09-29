@@ -11,7 +11,7 @@ BASE_TAGS = [
 
 
 def clean(s):
-    return re.sub(r"\\s+", " ", str(s or "")).strip()
+    return re.sub(r"\s+", " ", str(s or "")).strip()
 
 
 def english_keywords(text):
@@ -31,7 +31,7 @@ def build(story, kind, index):
         speaker = speakers[0] if speakers else "Nepal Parliament"
         title = f"{speaker} | Key Parliament Speech in Nepal"
 
-    title = re.sub(r"\\s+", " ", title).strip()[:100]
+    title = re.sub(r"\s+", " ", title).strip()[:100]
     description = (
         f"{speaker_text} discusses an important parliamentary issue in Nepal.\n\n"
         f"House: {', '.join(houses) if houses else 'Federal Parliament'}\n"
