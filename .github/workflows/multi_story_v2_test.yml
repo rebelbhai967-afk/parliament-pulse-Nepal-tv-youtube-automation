@@ -31,7 +31,7 @@ jobs:
 
       - name: Compile editorial pipeline
         run: |
-          python -m py_compile src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/render_stories.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py
+          python -m py_compile src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/render_stories.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py src/normalize_selection.py
 
       - name: Discover both Parliament Houses
         run: |
@@ -72,6 +72,11 @@ jobs:
       - name: Select multi-speaker stories with editorial hooks
         run: |
           python src/batch_analyze_v2.py data/transcripts_clean data/multi_story_selection.json
+
+      - name: Normalize selected stories to exact rendered windows
+        run: |
+          python src/normalize_selection.py data/multi_story_selection.json data/multi_story_selection.normalized.json
+          mv data/multi_story_selection.normalized.json data/multi_story_selection.json
 
       - name: Translate candidate transcripts to English subtitles and topic summaries
         run: |
