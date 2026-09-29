@@ -1,0 +1,124 @@
+name: Parliament Pulse Nepal Multi-Story V2 Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  multi-story-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install FFmpeg and fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-core
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Discover both Parliament Houses
+        run: |
+          mkdir -p data
+          python src/discover.py data/parliament_collections.json
+
+      - name: Download latest collections from both Houses
+        run: |
+          python src/download_multi.py data/parliament_collections.json data/videos 4 24
+
+      - name: Verify multi-source download
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          items=json.loads(Path("data/videos/videos.json").read_text(encoding="utf-8"))
+          houses=sorted({x.get("house") for x in items if x.get("house")})
+          print("Videos:", len(items))
+          print("Houses:", houses)
+          if len(items) < 4:
+              raise RuntimeError("Too few videos.")
+          if len(houses) < 2:
+              raise RuntimeError("Both National Assembly and House of Representatives are required.")
+          PY
+
+      - name: Transcribe all candidate videos
+        run: |
+          mkdir -p data/transcripts
+          python src/batch_transcribe.py data/videos data/transcripts
+
+      - name: Clean transcripts
+        run: |
+          mkdir -p data/transcripts_clean
+          python src/batch_clean.py data/transcripts data/transcripts_clean
+
+      - name: Select multi-speaker stories
+        run: |
+          python src/batch_analyze_v2.py data/transcripts_clean data/multi_story_selection.json
+
+      - name: Generate English-first metadata
+        run: |
+          mkdir -p data/metadata_v2
+          python src/generate_metadata_v2.py data/multi_story_selection.json data/metadata_v2
+
+      - name: Translate candidate transcripts to English subtitles
+        run: |
+          mkdir -p data/subtitles_v2
+          python src/batch_translate.py data/transcripts_clean data/subtitles_v2
+
+      - name: Render selected story pieces with English subtitles
+        run: |
+          mkdir -p output/multi_story_pieces
+          python src/render_stories.py data/multi_story_selection.json data/subtitles_v2 output/multi_story_pieces
+
+      - name: Assemble multi-speaker Long and separate Short masters
+        run: |
+          mkdir -p output/multi_story_masters
+          python src/assemble_stories.py data/multi_story_selection.json output/multi_story_pieces/.pieces output/multi_story_masters
+
+      - name: Verify story targets
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path("data/multi_story_selection.json").read_text(encoding="utf-8"))
+          longs=d.get("long_stories",[])
+          shorts=d.get("short_stories",[])
+          print("Long stories:",len(longs))
+          print("Short stories:",len(shorts))
+          for i,s in enumerate(longs,1):
+              print("LONG",i,s.get("duration"),s.get("speakers"))
+              if not 181 <= float(s.get("duration",0)) <= 600:
+                  raise RuntimeError(f"Long duration rule failed: {i}")
+          for i,s in enumerate(shorts,1):
+              print("SHORT",i,s.get("duration"),s.get("speaker"))
+              if float(s.get("duration",0)) >= 90:
+                  raise RuntimeError(f"Short duration rule failed: {i}")
+          if len(longs) < 12 or len(shorts) < 12:
+              raise RuntimeError("V2 did not produce the requested 12 Long + 12 Short stories.")
+          PY
+
+      - name: Upload V2 selection and metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: parliament-multi-story-v2
+          path: |
+            data/parliament_collections.json
+            data/videos/videos.json
+            data/multi_story_selection.json
+            data/metadata_v2/
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload V2 masters
+        uses: actions/upload-artifact@v4
+        with:
+          name: parliament-multi-story-v2-masters
+          path: output/multi_story_masters/
+          if-no-files-found: error
+          retention-days: 3
