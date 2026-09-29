@@ -61,6 +61,7 @@ def build(story, kind, index, summaries):
     houses = story.get("houses", [])
     issue = clean(story.get("topic_text", ""))[:220]
     speaker_text = " & ".join(speakers[:4]) if speakers else "Nepal Parliament"
+    attribution = "Verified speaker attribution from the official Parliament video page." if speakers else "Speaker name was not exposed on the official source page; no speaker name is inferred."
 
     source_videos = [p.get("video", "") for p in story.get("pieces", []) if p.get("video")]
     summary = ""
@@ -78,14 +79,15 @@ def build(story, kind, index, summaries):
         if safe_topic:
             title = f"{speaker_text} | {safe_topic[:55]}"
     else:
-        speaker = speakers[0] if speakers else clean(story.get("speaker")) or "Nepal Parliament"
-        title = f"{speaker} | {topic_label}"
+        speaker = speakers[0] if speakers else clean(story.get("speaker"))
+        title = f"{speaker} | {topic_label}" if speaker else f"{topic_label} | Nepal Parliament"
         if safe_topic:
             title = f"{speaker} | {safe_topic[:60]}"
 
     title = re.sub(r"\s+", " ", title).strip()[:100]
     description = (
-        f"{speaker_text} discusses a documented parliamentary issue in Nepal.\n\n"
+        f"{speaker_text} discusses a documented parliamentary issue in Nepal.\n"
+        f"Speaker attribution: {attribution}\n\n"
         f"House: {', '.join(houses) if houses else 'Federal Parliament'}\n"
         f"Format: {'multi-speaker parliamentary discussion' if kind == 'long' else 'short parliamentary highlight'}\n"
         f"Opening approach: {hook_text or 'strongest verified parliamentary moment'}\n\n"
@@ -108,6 +110,7 @@ def build(story, kind, index, summaries):
         "index": index, "title": title, "description": description,
         "tags": tags, "hashtags": hashtags, "category_id": "25", "privacy": "private",
         "speakers": speakers, "houses": houses, "story_text": issue,
+        "speaker_attribution": attribution,
         "topic_summary": summary, "community_prompt": community_prompt,
         "hook": hook, "hook_strategy": story.get("hook_strategy", "strongest_available"),
         "duration": story.get("duration"), "kind": kind
