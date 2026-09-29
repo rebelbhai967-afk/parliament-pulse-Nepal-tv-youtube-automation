@@ -27,20 +27,36 @@ GENERIC_SPEAKERS = {
     "", "zero hour", "special hour", "jawaf", "prastav prastut",
     "ninrnayartha prastut", "nirdeshan", "samjhauta pes", "summary",
     "first meeting", "meeting", "sammananiye sabhamukh", "video",
-    "watch video", "pratibedan pes", "pratibedhan pes",
+    "watch video", "pratibedan pes", "pratibedhan pes", "national anthem",
+    "bidhyak prastut", "सम्माननीय अध्यक्ष", "शून्य समय",
 }
+
+PROCEDURAL_SPEAKER_TERMS = (
+    "बैठक", "अधिवेशन", "शून्य समय", "विशेष समय", "प्रतिवेदन", "सभासमक्ष",
+    "सभासमक्ष पेस", "सभा समक्ष पेस", "विधेयक", "प्रस्तुत", "प्रस्ताव",
+    "सम्माननीय अध्यक्ष", "अध्यक्ष", "national anthem", "zero hour",
+    "special hour", "prastav", "bidhyak", "pratibedan", "sammananiye",
+    "meeting", "session", "report", "presented", "proposal",
+)
+
+def looks_like_person_name(text):
+    text = clean(text)
+    if not text or any(ch.isdigit() for ch in text):
+        return False
+    normalized = text.lower()
+    if any(term in normalized for term in PROCEDURAL_SPEAKER_TERMS):
+        return False
+    tokens = [t for t in re.split(r"\s+", text) if t]
+    if not 2 <= len(tokens) <= 6:
+        return False
+    return any(re.search(r"[A-Za-z]", t) for t in tokens) or any(re.search(r"[\u0900-\u097F]", t) for t in tokens)
 
 def normalize_speaker(text):
     text = clean(text)
-    text = re.sub(r"^video\s*-\s*", "", text, flags=re.I)
+    text = re.sub(r"^video\s*[-–:]\s*", "", text, flags=re.I)
     text = re.sub(r"^(मा\.?|माननीय|hon\.?|honorable)\s+", "", text, flags=re.I)
     normalized = re.sub(r"\s+", " ", text).strip().lower()
-    if normalized in GENERIC_SPEAKERS:
-        return ""
-    if any(token in normalized for token in (
-        "zero hour", "special hour", "prastav prastut", "nirdeshan",
-        "nirn", "jawaf", "samjhauta pes", "pratibedan pes"
-    )):
+    if normalized in GENERIC_SPEAKERS or not looks_like_person_name(text):
         return ""
     return text.strip()
 
