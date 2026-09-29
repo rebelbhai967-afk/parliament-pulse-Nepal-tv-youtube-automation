@@ -51,12 +51,19 @@ def build(story, kind, index, summaries):
     )
     tags = BASE_TAGS + speakers[:4] + english_keywords(summary)[:18]
     tags = list(dict.fromkeys([x for x in tags if x]))[:30]
+    prompts = [
+        "Which part of this parliamentary discussion would you like explained in a future video?",
+        "What public issue raised here deserves more attention or context?",
+        "Which point from this discussion should we document next?"
+    ]
+    community_prompt = prompts[(index - 1) % len(prompts)]
+    description += f"\\n\\nCommunity note: {community_prompt}"
     hashtags = ["#NepalParliament", "#NepalPolitics", "#ParliamentNews", "#NepalNews", "#ParliamentPulseNepalTV"]
     return {
         "index": index, "title": title, "description": description,
         "tags": tags, "hashtags": hashtags, "category_id": "25", "privacy": "private",
         "speakers": speakers, "houses": houses, "story_text": issue,
-        "topic_summary": summary, "duration": story.get("duration"), "kind": kind
+        "topic_summary": summary, "community_prompt": community_prompt, "duration": story.get("duration"), "kind": kind
     }
 
 def main(selection, output, summary_file=None):
