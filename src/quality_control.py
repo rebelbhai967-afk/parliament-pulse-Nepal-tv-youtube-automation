@@ -133,6 +133,10 @@ def main(selection_path, masters_dir, thumbnails_dir):
         errors.append(
             f"Short-source diversity is low: {len(used_short_sources)} unique sources"
         )
+    if len(used_long_sources) < min(12, len(longs)):
+        errors.append(
+            f"Long-source diversity is low: {len(used_long_sources)} unique sources"
+        )
 
     overlap_sources = used_long_sources & used_short_sources
     if overlap_sources:
