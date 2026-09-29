@@ -41,7 +41,7 @@ def similarity(a, b):
     return len(x & y) / len(x | y) if x | y else 0.0
 
 
-def build_candidate(segments, i, min_s=70, max_s=180):
+def build_candidate(segments, i, min_s=60, max_s=180):
     start = float(segments[i].get("start", 0))
     end = float(segments[i].get("end", start))
     left = right = i
@@ -61,6 +61,30 @@ def build_candidate(segments, i, min_s=70, max_s=180):
     opening_text = " ".join(clean(s.get("nepali")) for s in segments[left:min(left + 2, right + 1)])
     return {"start": round(start,3), "end": round(end,3), "duration": round(end-start,3), "score": score(text), "text": text, "hook_text": opening_text}
 
+def build_long_windows(segments, max_windows=4):
+    if not segments:
+        return []
+    total_start = float(segments[0].get("start", 0))
+    total_end = float(segments[-1].get("end", total_start))
+    if total_end - total_start < 181:
+        return []
+    duration = total_end - total_start
+    windows = []
+    for frac in (0.0, 0.25, 0.5, 0.75)[:max_windows]:
+        start_target = total_start + min(max(0, duration - 181), duration * frac)
+        end_target = min(total_end, start_target + min(300, duration))
+        left = min(range(len(segments)), key=lambda j: abs(float(segments[j].get("start", 0)) - start_target))
+        right = next((j for j in range(left, len(segments)) if float(segments[j].get("end", 0)) >= end_target), len(segments)-1)
+        start = float(segments[left].get("start", start_target))
+        end = float(segments[right].get("end", end_target))
+        if 181 <= end - start <= 360:
+            text = " ".join(clean(s.get("nepali")) for s in segments[left:right+1])
+            hook_text = " ".join(clean(s.get("nepali")) for s in segments[left:min(left + 2, right + 1)])
+            windows.append({"start": round(start,3), "end": round(end,3), "duration": round(end-start,3), "score": score(text), "text": text, "hook_text": hook_text})
+    unique = {}
+    for w in windows:
+        unique[(w["start"], w["end"])] = w
+    return list(unique.values())
 
 def load_video_meta():
     path = Path("data/videos/videos.json")
@@ -99,6 +123,19 @@ def main(input_dir, output_file):
 
     candidates.sort(key=lambda x: x["score"], reverse=True)
 
+    long_candidates = []
+    for transcript_file in sorted(Path(input_dir).glob("video_*.json")):
+        data = json.loads(transcript_file.read_text(encoding="utf-8"))
+        segments = data.get("segments", [])
+        video = str(Path("data/videos") / (transcript_file.stem + ".mp4"))
+        vm = meta.get(video, {})
+        for w in build_long_windows(segments):
+            w.update({"video": video, "transcript": str(transcript_file),
+                      "speaker": clean(vm.get("speaker")), "house": vm.get("house", ""),
+                      "source_page": vm.get("page", ""), "collection_title": vm.get("collection_title", "")})
+            long_candidates.append(w)
+    long_candidates.sort(key=lambda x: x["score"], reverse=True)
+
     # Keep a diverse candidate pool: no single source video dominates.
     pool, per_video = [], {}
     for c in candidates:
@@ -110,56 +147,51 @@ def main(input_dir, output_file):
 
     long_stories = []
     used = set()
-    for anchor in pool:
-        if anchor["video"] in used:
+    long_source_count = {}
+    used_ranges = {}
+
+    # Prefer coherent single-source parliamentary speeches.
+    for candidate in long_candidates:
+        video = candidate["video"]
+        if long_source_count.get(video, 0) >= 2:
             continue
-        pieces = [anchor]
-        total = anchor["duration"]
-        related = [c for c in pool if c["video"] != anchor["video"] and c["video"] not in {p["video"] for p in pieces}]
-        related.sort(key=lambda c: (similarity(anchor["text"], c["text"]), c["score"]), reverse=True)
-        for c in related:
-            sim = similarity(anchor["text"], c["text"])
-            if sim < 0.08:
-                continue
-            if total + c["duration"] > 600:
-                continue
-            pieces.append(c); total += c["duration"]
-            if total >= 181 or len(pieces) >= 4:
-                break
-        if total >= 181 and len(pieces) <= 4:
-            long_stories.append(enrich_piece({
-                "pieces": pieces,
-                "duration": round(total,3),
-                "score": round(sum(p["score"] for p in pieces) + 8 * (len(pieces)-1), 3),
-                "speakers": [p["speaker"] for p in pieces if p["speaker"]],
-                "houses": sorted({p["house"] for p in pieces if p["house"]}),
-                "topic_text": " ".join(p["text"] for p in pieces),
-            }))
-            used.update(p["video"] for p in pieces)
+        ranges = used_ranges.setdefault(video, [])
+        if any(abs(candidate["start"] - s) < 45 for s, e in ranges):
+            continue
+        long_stories.append(enrich_piece({
+            "pieces": [candidate], "duration": candidate["duration"], "score": candidate["score"],
+            "speakers": [candidate["speaker"]] if candidate["speaker"] else [],
+            "houses": [candidate["house"]] if candidate["house"] else [],
+            "topic_text": candidate["text"],
+        }))
+        long_source_count[video] = long_source_count.get(video, 0) + 1
+        ranges.append((candidate["start"], candidate["end"]))
+        used.add(video)
         if len(long_stories) >= 12:
             break
 
-    # Fallback: build 2-piece stories from remaining strong candidates.
+    # Fallback: combine related short speech windows rather than fabricate a story.
     if len(long_stories) < 12:
-        for i, a in enumerate(pool):
-            if a["video"] in used:
-                continue
-            for b in pool[i+1:]:
-                if b["video"] in used or b["video"] == a["video"]:
-                    continue
-                total = a["duration"] + b["duration"]
-                if 181 <= total <= 600 and similarity(a["text"], b["text"]) >= 0.03:
-                    long_stories.append(enrich_piece({
-                        "pieces": [a,b],
-                        "duration": round(total,3),
-                        "score": a["score"] + b["score"],
-                        "speakers": [x["speaker"] for x in [a,b] if x["speaker"]],
-                        "houses": sorted({x["house"] for x in [a,b] if x["house"]}),
-                        "topic_text": a["text"] + " " + b["text"],
-                    }))
-                    used.update([a["video"], b["video"]])
-                    break
+        for anchor in pool:
             if len(long_stories) >= 12:
+                break
+            related = sorted(
+                [x for x in pool if x["video"] != anchor["video"] and long_source_count.get(x["video"], 0) < 2],
+                key=lambda x: (similarity(anchor["text"], x["text"]), x["score"]), reverse=True)
+            for other in related:
+                total = anchor["duration"] + other["duration"]
+                if total > 600 or similarity(anchor["text"], other["text"]) < 0.02:
+                    continue
+                long_stories.append(enrich_piece({
+                    "pieces": [anchor, other], "duration": round(total,3),
+                    "score": anchor["score"] + other["score"] + 8,
+                    "speakers": [x["speaker"] for x in (anchor, other) if x["speaker"]],
+                    "houses": sorted({x["house"] for x in (anchor, other) if x["house"]}),
+                    "topic_text": anchor["text"] + " " + other["text"],
+                }))
+                long_source_count[anchor["video"]] = long_source_count.get(anchor["video"], 0) + 1
+                long_source_count[other["video"]] = long_source_count.get(other["video"], 0) + 1
+                used.update([anchor["video"], other["video"]])
                 break
 
     short_stories = []
@@ -221,7 +253,7 @@ def main(input_dir, output_file):
     Path(output_file).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Candidates: {len(candidates)} | Long stories: {len(long_stories)} | Short stories: {len(short_stories)}")
     if len(long_stories) < 4 or len(short_stories) < 4:
-        raise RuntimeError("Not enough diverse stories for a safe multi-story build; refusing to fabricate content.")
+        raise RuntimeError(f"Not enough diverse stories for a safe multi-story build: {len(long_stories)} long, {len(short_stories)} short.")
 
 
 if __name__ == "__main__":
