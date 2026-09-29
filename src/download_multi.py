@@ -20,13 +20,13 @@ def session():
 
 
 def clean(value):
-    return re.sub(r"\\s+", " ", str(value or "")).strip()
+    return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
 def speaker_from_link(text):
     text = clean(text)
-    text = re.sub(r"^video\\s*-\\s*", "", text, flags=re.I)
-    text = re.sub(r"^(मा\\.?|माननीय|hon\\.?|honorable)\\s+", "", text, flags=re.I)
+    text = re.sub(r"^video\s*-\s*", "", text, flags=re.I)
+    text = re.sub(r"^(मा\.?|माननीय|hon\.?|honorable)\s+", "", text, flags=re.I)
     return text.strip()
 
 
