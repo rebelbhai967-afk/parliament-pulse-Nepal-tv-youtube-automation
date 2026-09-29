@@ -11,7 +11,7 @@ def run(command):
         raise RuntimeError("Video render command failed.")
 
 
-def render_piece(piece, subtitle_dir, output):
+def render_piece(piece, subtitle_dir, output, kind):
     start = float(piece["start"])
     duration = float(piece["end"]) - start
     if duration <= 0:
@@ -25,9 +25,18 @@ def render_piece(piece, subtitle_dir, output):
         "ffmpeg", "-y", "-ss", str(start), "-i", str(source),
         "-t", str(duration),
     ]
+    filters = []
+    if kind == "short":
+        filters.append("scale=1080:-2:force_original_aspect_ratio=decrease")
+        filters.append("pad=1080:1920:(ow-iw)/2:(oh-ih)/2")
+    else:
+        filters.append("scale=1920:1080:force_original_aspect_ratio=decrease")
+        filters.append("pad=1920:1080:(ow-iw)/2:(oh-ih)/2")
     if srt.exists():
-        command += ["-vf", f"subtitles={srt.resolve()}:force_style='FontName=DejaVu Sans,FontSize=22,Outline=2,Shadow=1,Alignment=2,MarginV=120'"]
-    command += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-c:a", "aac", "-b:a", "128k", str(output)]
+        filters.append(
+            f"subtitles={srt.resolve()}:force_style='FontName=DejaVu Sans,FontSize=22,Outline=2,Shadow=1,Alignment=2,MarginV=120'"
+        )
+    command += ["-vf", ",".join(filters), "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-c:a", "aac", "-b:a", "128k", str(output)]
     run(command)
 
 
@@ -40,7 +49,7 @@ def main(selection_path, subtitle_dir, output_dir):
     for kind, key in (("long", "long_stories"), ("short", "short_stories")):
         for index, story in enumerate(data.get(key, []), 1):
             for part, piece in enumerate(story.get("pieces", []), 1):
-                render_piece(piece, subtitle_dir, work / f"{kind}_{index:02d}_{part:02d}.mp4")
+                render_piece(piece, subtitle_dir, work / f"{kind}_{index:02d}_{part:02d}.mp4", kind)
             print(f"Prepared {kind} story {index}")
 
 
