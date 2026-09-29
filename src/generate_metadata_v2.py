@@ -74,7 +74,7 @@ def build(story, kind, index, summaries):
     hook = story.get("opening_hook") or {}
     hook_text = clean(hook.get("text"))
     if kind == "long":
-        title = f"{speaker_text} | Parliament Discussion in Nepal"
+        title = f"{speaker_text} | {topic_label}"
         if safe_topic:
             title = f"{speaker_text} | {safe_topic[:55]}"
     else:
