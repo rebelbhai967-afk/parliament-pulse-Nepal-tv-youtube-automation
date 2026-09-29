@@ -19,25 +19,19 @@ def choose_hook(text):
     candidates = sentence_candidates(text)
     if not candidates:
         return {"text": clean(text)[:180], "strategy": "strongest_available", "score": 0}
-    best = None
-    for sentence in candidates[:10]:
-        score = 0
-        if "?" in sentence or any(w in sentence for w in QUESTION_WORDS):
-            score += 4
-        score += 2 * sum(1 for w in STRONG_WORDS if w in sentence)
-        if 45 <= len(sentence) <= 150:
-            score += 4
-        if len(sentence) > 190:
-            score -= 2
-        if sentence.startswith(("त्यसपछि", "त्यसैगरी", "धन्यवाद", "माननीय", "सभामुखज्यू")):
-            score -= 3
-        candidate = (score, sentence)
-        if best is None or candidate[0] > best[0]:
-            best = candidate
+    # The actual cold-open clip begins at the start of the selected story piece.
+    # Keep the hook text aligned with that audio rather than quoting a later sentence.
+    first = candidates[0]
+    score = 0
+    if "?" in first or any(w in first for w in QUESTION_WORDS):
+        score += 4
+    score += 2 * sum(1 for w in STRONG_WORDS if w in first)
+    if 45 <= len(first) <= 150:
+        score += 4
     return {
-        "text": best[1][:180],
-        "strategy": ("question_hook" if "?" in best[1] or any(w in best[1] for w in QUESTION_WORDS) else "public_issue_hook" if any(w in best[1] for w in STRONG_WORDS) else "strong_quote_hook"),
-        "score": best[0],
+        "text": first[:180],
+        "strategy": ("question_hook" if "?" in first or any(w in first for w in QUESTION_WORDS) else "public_issue_hook" if any(w in first for w in STRONG_WORDS) else "strong_quote_hook"),
+        "score": score,
     }
 
 def enrich_piece(piece):
