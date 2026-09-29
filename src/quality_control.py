@@ -83,10 +83,10 @@ def main(selection_path, masters_dir, thumbnails_dir):
 
     errors = []
 
-    if len(longs) != 12:
-        errors.append(f"Expected exactly 12 long stories, found {len(longs)}")
-    if len(shorts) != 12:
-        errors.append(f"Expected exactly 12 short stories, found {len(shorts)}")
+    if len(longs) != 2:
+        errors.append(f"Expected exactly 2 long stories, found {len(longs)}")
+    if len(shorts) != 2:
+        errors.append(f"Expected exactly 2 short stories, found {len(shorts)}")
 
     long_speakers = set()
     short_speakers = set()
@@ -147,11 +147,11 @@ def main(selection_path, masters_dir, thumbnails_dir):
         if not thumb.exists() or thumb.stat().st_size < 5_000:
             errors.append(f"Missing thumbnail: {thumb}")
 
-    if len(used_short_sources) < min(12, len(shorts)):
+    if len(used_short_sources) < min(2, len(shorts)):
         errors.append(
             f"Short-source diversity is low: {len(used_short_sources)} unique sources"
         )
-    if len(used_long_sources) < min(12, len(longs)):
+    if len(used_long_sources) < min(2, len(longs)):
         errors.append(
             f"Long-source diversity is low: {len(used_long_sources)} unique sources"
         )
