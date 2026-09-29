@@ -186,7 +186,7 @@ def main(input_dir, output_file):
             c2["start"] = round(max(0, mid - 38), 3)
             c2["end"] = round(min(c["end"], mid + 38), 3)
             c2["duration"] = round(c2["end"] - c2["start"], 3)
-            short_stories.append({
+            short_stories.append(enrich_piece({
                 "pieces": [c2],
                 "duration": c2["duration"],
                 "score": c2["score"],
@@ -195,7 +195,7 @@ def main(input_dir, output_file):
                 "houses": [c2["house"]] if c2["house"] else [],
                 "topic_text": c2["text"],
                 "video": c2["video"],
-            })
+            }))
             short_used.add(c["video"])
         if len(short_stories) >= 12:
             break
