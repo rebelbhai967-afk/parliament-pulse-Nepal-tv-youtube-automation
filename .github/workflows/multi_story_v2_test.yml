@@ -92,6 +92,10 @@ jobs:
           mkdir -p output/multi_story_thumbnails
           python src/generate_thumbnails_v2.py data/metadata_v2 output/multi_story_masters output/multi_story_thumbnails
 
+      - name: Automated quality control
+        run: |
+          python src/quality_control.py data/multi_story_selection.json output/multi_story_masters output/multi_story_thumbnails
+
       - name: Verify story targets
         run: |
           python - <<'PY'
