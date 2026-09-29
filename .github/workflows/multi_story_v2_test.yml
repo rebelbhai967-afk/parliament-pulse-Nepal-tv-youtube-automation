@@ -6,6 +6,12 @@ on:
 jobs:
   multi-story-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      WHISPER_BEAM_SIZE: "1"
+      WHISPER_TEMPERATURE: "0.0"
+      WHISPER_CPU_THREADS: "2"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
