@@ -15,7 +15,7 @@ GENERIC_SPEAKERS = {"", "zero hour", "special hour", "jawaf", "prastav prastut",
 
 
 def clean(text):
-    return re.sub(r"\\s+", " ", str(text or "")).strip()
+    return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
 def score(text):
