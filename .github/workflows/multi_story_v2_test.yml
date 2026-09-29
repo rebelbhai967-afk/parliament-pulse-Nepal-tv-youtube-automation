@@ -14,10 +14,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -160,7 +160,7 @@ jobs:
           PY
 
       - name: Upload V2 selection and metadata
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: parliament-multi-story-v2
           path: |
@@ -174,7 +174,7 @@ jobs:
           retention-days: 7
 
       - name: Upload V2 masters
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: parliament-multi-story-v2-masters
           path: output/multi_story_masters/
