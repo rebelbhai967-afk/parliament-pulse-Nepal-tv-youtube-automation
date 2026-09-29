@@ -40,7 +40,7 @@ jobs:
 
       - name: Download latest collections from both Houses
         run: |
-          python src/download_multi.py data/parliament_collections.json data/videos 8 40
+          python src/download_multi.py data/parliament_collections.json data/videos 8 60
 
       - name: Verify multi-source download
         run: |
@@ -51,8 +51,8 @@ jobs:
           houses=sorted({x.get("house") for x in items if x.get("house")})
           print("Videos:", len(items))
           print("Houses:", houses)
-          if len(items) < 24:
-              raise RuntimeError(f"Need at least 24 distinct source videos for 12 Long + 12 Short separation; found {len(items)}.")
+          if len(items) < 48:
+              raise RuntimeError(f"Need at least 48 distinct source videos for a safer 12 Long + 12 Short build with source diversity; found {len(items)}.")
           if len(houses) < 2:
               raise RuntimeError("Both National Assembly and House of Representatives are required.")
           if len({x.get("page") for x in items}) != len(items):
