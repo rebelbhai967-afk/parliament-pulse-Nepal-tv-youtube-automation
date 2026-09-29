@@ -5,10 +5,12 @@ import sys
 from pathlib import Path
 
 
-def run_upload(video, metadata, client_secret, token, privacy):
+def run_upload(video, item, client_secret, token, privacy):
     command = [
         sys.executable, "src/youtube_upload.py", str(video),
-        "--metadata", str(metadata),
+        "--title", str(item.get("title", "")),
+        "--description", str(item.get("description", "")),
+        "--tags", ",".join(item.get("tags", [])),
         "--privacy", privacy,
         "--client-secret", client_secret,
         "--token", token,
@@ -29,7 +31,7 @@ def main(masters, metadata_dir, client_secret, token, privacy, kind):
             raise FileNotFoundError(video)
 
         print(f"\n=== YouTube {kind.upper()} {index:02d} ===")
-        run_upload(video, metadata_dir / f"{kind}_{index:02d}_upload.json", client_secret, token, privacy)
+        run_upload(video, item, client_secret, token, privacy)
         results.append({"index": index, "video": str(video), "status": "uploaded"})
 
     (masters / f"youtube_{kind}_upload_report.json").write_text(
