@@ -23,11 +23,36 @@ def clean(value):
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
-def speaker_from_link(text):
+GENERIC_SPEAKERS = {
+    "", "zero hour", "special hour", "jawaf", "prastav prastut",
+    "ninrnayartha prastut", "nirdeshan", "samjhauta pes", "summary",
+    "first meeting", "meeting", "sammananiye sabhamukh", "video",
+    "watch video", "pratibedan pes", "pratibedhan pes",
+}
+
+def normalize_speaker(text):
     text = clean(text)
     text = re.sub(r"^video\s*-\s*", "", text, flags=re.I)
     text = re.sub(r"^(मा\.?|माननीय|hon\.?|honorable)\s+", "", text, flags=re.I)
+    normalized = re.sub(r"\s+", " ", text).strip().lower()
+    if normalized in GENERIC_SPEAKERS:
+        return ""
+    if any(token in normalized for token in (
+        "zero hour", "special hour", "prastav prastut", "nirdeshan",
+        "nirn", "jawaf", "samjhauta pes", "pratibedan pes"
+    )):
+        return ""
     return text.strip()
+
+def speaker_from_link(text):
+    return normalize_speaker(text)
+
+def speaker_from_page_title(title):
+    """Parliament video pages often put the member name after the final slash."""
+    title = clean(title)
+    if "/" not in title:
+        return ""
+    return normalize_speaker(title.rsplit("/", 1)[-1])
 
 
 def video_pages(collection, s):
@@ -147,6 +172,7 @@ def main(collections_json, output_dir, max_collections=4, max_videos=20):
                 path = out / f"video_{index:03d}.mp4"
                 print(f"Downloading {index}: {page['speaker']} -> {path.name}")
                 download(source, path, s)
+                speaker = page["speaker"] or speaker_from_page_title(page_title)
                 records.append({
                     "index": index,
                     "file": str(path),
@@ -156,7 +182,7 @@ def main(collections_json, output_dir, max_collections=4, max_videos=20):
                     "source_id": collection["source_id"],
                     "collection_title": collection["title"],
                     "page_title": page_title,
-                    "speaker": page["speaker"],
+                    "speaker": speaker,
                 })
                 index += 1
             except Exception as exc:
@@ -165,7 +191,8 @@ def main(collections_json, output_dir, max_collections=4, max_videos=20):
             break
 
     (out / "videos.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Downloaded {len(records)} Parliament videos from both Houses.")
+    named = sum(1 for item in records if item.get("speaker"))
+    print(f"Downloaded {len(records)} Parliament videos from both Houses; speaker-attributed: {named}.")
     if len(records) < 4:
         raise RuntimeError("Too few Parliament videos downloaded for multi-story selection.")
 
