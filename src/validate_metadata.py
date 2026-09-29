@@ -13,6 +13,7 @@ def validate_item(item, kind):
     title = str(item.get("title", "")).strip()
     description = str(item.get("description", "")).strip()
     speakers = item.get("speakers") or []
+    hook = item.get("hook") or {}
 
     if not title:
         errors.append("missing title")
@@ -24,6 +25,10 @@ def validate_item(item, kind):
         errors.append("description > 5000 chars")
     if not speakers:
         errors.append("missing speaker attribution")
+    if not hook.get("text"):
+        errors.append("missing transcript-grounded opening hook")
+    if hook.get("strategy") not in {"question_hook", "public_issue_hook", "strong_quote_hook", "strongest_available"}:
+        errors.append("invalid hook strategy")
 
     lowered = (title + " " + description).lower()
     for phrase in BANNED:
