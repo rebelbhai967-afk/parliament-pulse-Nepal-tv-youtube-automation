@@ -7,111 +7,70 @@ import requests
 import urllib3
 from bs4 import BeautifulSoup
 
-urllib3.disable_warnings(
-    urllib3.exceptions.InsecureRequestWarning
-)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-BASE_URL = "https://na.parliament.gov.np"
+SOURCES = [
+    {
+        "id": "national_assembly",
+        "house": "National Assembly",
+        "url": "https://na.parliament.gov.np/np/videos",
+        "host": "https://na.parliament.gov.np",
+        "video_prefix": "/np/video/",
+        "collection_prefix": "/np/videos/",
+    },
+    {
+        "id": "house_of_representatives",
+        "house": "House of Representatives",
+        "url": "https://hr.parliament.gov.np/en/videos",
+        "host": "https://hr.parliament.gov.np",
+        "video_prefix": "/en/video/",
+        "collection_prefix": "/en/videos/",
+    },
+]
 
 
-def discover_videos(output_path: str):
-
-    output = Path(output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-
-    urls = [
-        f"{BASE_URL}/index.php/np/today-parliament",
-        f"{BASE_URL}/np/videos",
-    ]
-
-    videos = []
+def discover(output_path):
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    headers = {"User-Agent": "Mozilla/5.0"}
+    collections = []
     seen = set()
 
-    for page_url in urls:
-
-        print(f"Checking: {page_url}")
-
-        response = requests.get(
-            page_url,
-            timeout=30,
-            headers={
-                "User-Agent": "Mozilla/5.0"
-            },
-            verify=False
-        )
-
+    for source in SOURCES:
+        response = requests.get(source["url"], headers=headers, timeout=30, verify=False)
         response.raise_for_status()
-
-        soup = BeautifulSoup(
-            response.text,
-            "html.parser"
-        )
+        soup = BeautifulSoup(response.text, "html.parser")
 
         for link in soup.find_all("a", href=True):
-
             href = link.get("href", "").strip()
-
-            title = link.get_text(
-                " ",
-                strip=True
-            )
-
             if not href:
                 continue
+            full = urljoin(source["host"], href)
+            if source["collection_prefix"] not in full or full in seen:
+                continue
+            seen.add(full)
+            title = link.get_text(" ", strip=True)
+            collections.append({
+                "source_id": source["id"],
+                "house": source["house"],
+                "title": title,
+                "url": full,
+                "source_index": len(collections),
+            })
 
-            full_url = urljoin(
-                BASE_URL,
-                href
-            )
-
-            # Parliament video collection
-            if "/np/videos/" in full_url:
-
-                if full_url not in seen:
-
-                    seen.add(full_url)
-
-                    videos.append({
-                        "title": title,
-                        "url": full_url,
-                        "source": page_url
-                    })
-
-
-    with open(
-        output,
-        "w",
-        encoding="utf-8"
-    ) as file:
-
-        json.dump(
-            videos,
-            file,
-            ensure_ascii=False,
-            indent=2
-        )
-
-
-    print(
-        f"Found {len(videos)} video collections"
-    )
-
-    print(
-        f"Saved to: {output}"
-    )
+    result = {
+        "sources": SOURCES,
+        "collections": collections,
+        "selection_policy": "latest collections from both Houses; never treat one House as the whole Parliament",
+    }
+    out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Discovered {len(collections)} collections across {len(SOURCES)} Houses.")
+    for item in collections[:12]:
+        print(item["house"], "|", item["title"], "|", item["url"])
 
 
 if __name__ == "__main__":
-
     if len(sys.argv) != 2:
-
-        print(
-            "Usage: python discover.py <output_json>"
-        )
-
-        sys.exit(1)
-
-
-    discover_videos(
-        sys.argv[1]
-    )
+        print("Usage: python src/discover.py <output_json>")
+        raise SystemExit(1)
+    discover(sys.argv[1])
