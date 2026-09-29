@@ -171,33 +171,44 @@ def main(input_dir, output_file):
     used = set()
     long_source_count = {}
     used_ranges = {}
-    houses_needed = sorted({clean(x.get("house")) for x in long_candidates if clean(x.get("house"))})
+    houses = []
+    for candidate in long_candidates:
+        house = clean(candidate.get("house"))
+        if house and house not in houses:
+            houses.append(house)
 
-    # Prefer one strong long story per source, balancing both Houses when possible.
-    for preferred_house in (houses_needed + [""]):
-        if len(long_stories) >= 12:
-            break
-        for candidate in long_candidates:
-            if len(long_stories) >= 12:
+    # Round-robin Houses so one House does not silently dominate the daily set.
+    # If one House has fewer eligible windows, the other fills the remaining slots.
+    while len(long_stories) < 12:
+        made_progress = False
+        for preferred_house in houses + [""]:
+            for candidate in long_candidates:
+                if len(long_stories) >= 12:
+                    break
+                video = candidate["video"]
+                house = clean(candidate.get("house"))
+                if preferred_house and house != preferred_house:
+                    continue
+                if video in used or long_source_count.get(video, 0) >= 1:
+                    continue
+                ranges = used_ranges.setdefault(video, [])
+                if any(abs(candidate["start"] - s) < 60 for s, e in ranges):
+                    continue
+                long_stories.append(enrich_piece({
+                    "pieces": [candidate],
+                    "duration": candidate["duration"],
+                    "score": candidate["score"],
+                    "speakers": [candidate["speaker"]] if candidate["speaker"] else [],
+                    "houses": [candidate["house"]] if candidate["house"] else [],
+                    "topic_text": candidate["text"],
+                }))
+                long_source_count[video] = 1
+                ranges.append((candidate["start"], candidate["end"]))
+                used.add(video)
+                made_progress = True
                 break
-            video = candidate["video"]
-            house = clean(candidate.get("house"))
-            if preferred_house and house != preferred_house:
-                continue
-            if long_source_count.get(video, 0) >= 1:
-                continue
-            ranges = used_ranges.setdefault(video, [])
-            if any(abs(candidate["start"] - s) < 60 for s, e in ranges):
-                continue
-            long_stories.append(enrich_piece({
-                "pieces": [candidate], "duration": candidate["duration"], "score": candidate["score"],
-                "speakers": [candidate["speaker"]] if candidate["speaker"] else [],
-                "houses": [candidate["house"]] if candidate["house"] else [],
-                "topic_text": candidate["text"],
-            }))
-            long_source_count[video] = 1
-            ranges.append((candidate["start"], candidate["end"]))
-            used.add(video)
+        if not made_progress:
+            break
 
     # If fewer than 12 coherent long windows exist, combine related short
     # speech windows as a clearly sourced parliamentary discussion.
