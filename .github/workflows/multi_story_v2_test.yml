@@ -67,15 +67,23 @@ jobs:
         run: |
           python src/batch_analyze_v2.py data/transcripts_clean data/multi_story_selection.json
 
-      - name: Generate English-first metadata
-        run: |
-          mkdir -p data/metadata_v2
-          python src/generate_metadata_v2.py data/multi_story_selection.json data/metadata_v2
-
-      - name: Translate candidate transcripts to English subtitles
+      - name: Translate candidate transcripts to English subtitles and topic summaries
         run: |
           mkdir -p data/subtitles_v2
-          python src/batch_translate.py data/transcripts_clean data/subtitles_v2
+          python src/batch_translate.py data/transcripts_clean data/subtitles_v2 data/subtitles_v2/topic_summaries.json
+
+      - name: Generate human-style English metadata
+        run: |
+          mkdir -p data/metadata_v2
+          python src/generate_metadata_v2.py data/multi_story_selection.json data/metadata_v2 data/subtitles_v2/topic_summaries.json
+
+      - name: Validate metadata quality and neutrality
+        run: |
+          python src/validate_metadata.py data/metadata_v2
+
+      - name: Create content publication ledger
+        run: |
+          python src/content_ledger.py data/multi_story_selection.json data/metadata_v2 data/content_ledger.json
 
       - name: Render selected story pieces with English subtitles
         run: |
@@ -127,6 +135,7 @@ jobs:
             data/videos/videos.json
             data/multi_story_selection.json
             data/metadata_v2/
+            data/content_ledger.json
           if-no-files-found: error
           retention-days: 7
 
