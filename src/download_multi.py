@@ -170,41 +170,72 @@ def main(collections_json, output_dir, max_collections=4, max_videos=20):
     records = []
     seen_pages = set()
     index = 1
+    page_candidates = []
 
+    # Inspect all selected collection pages first. Then prioritize verified
+    # person-name labels, while keeping the actual downloaded source count low.
     for collection in selected:
         pages = video_pages(collection, s)
         print(f"{collection['house']}: {len(pages)} videos in {collection['title']}")
         for page in pages:
-            if len(records) >= max_videos:
-                break
             if page["page"] in seen_pages:
                 continue
             seen_pages.add(page["page"])
-            try:
-                source, page_title = source_from_page(page["page"], s)
-                if not source:
-                    print("Skipping: no video source", page["page"])
-                    continue
-                path = out / f"video_{index:03d}.mp4"
-                print(f"Downloading {index}: {page['speaker']} -> {path.name}")
-                download(source, path, s)
-                speaker = page["speaker"] or speaker_from_page_title(page_title)
-                records.append({
-                    "index": index,
-                    "file": str(path),
-                    "page": page["page"],
-                    "source": source,
-                    "house": collection["house"],
-                    "source_id": collection["source_id"],
-                    "collection_title": collection["title"],
-                    "page_title": page_title,
-                    "speaker": speaker,
-                })
-                index += 1
-            except Exception as exc:
-                print("Download failed:", page["page"], exc)
-        if len(records) >= max_videos:
+            speaker = page.get("speaker") or speaker_from_page_title(page.get("link_label", ""))
+            page_candidates.append({"collection": collection, "page": page, "speaker": speaker})
+
+    named = [x for x in page_candidates if x["speaker"]]
+    unnamed = [x for x in page_candidates if not x["speaker"]]
+    ordered = []
+
+    # Round-robin Houses for named clips first, so both Houses remain represented.
+    houses = []
+    for item in page_candidates:
+        house = item["collection"]["house"]
+        if house not in houses:
+            houses.append(house)
+
+    while named and len(ordered) < max_videos:
+        made = False
+        for house in houses:
+            hit = next((x for x in named if x["collection"]["house"] == house), None)
+            if hit:
+                ordered.append(hit)
+                named.remove(hit)
+                made = True
+                if len(ordered) >= max_videos:
+                    break
+        if not made:
             break
+
+    ordered.extend(unnamed[:max(0, max_videos - len(ordered))])
+
+    for item in ordered:
+        collection = item["collection"]
+        page = item["page"]
+        try:
+            source, page_title = source_from_page(page["page"], s)
+            if not source:
+                print("Skipping: no video source", page["page"])
+                continue
+            path = out / f"video_{index:03d}.mp4"
+            speaker = item["speaker"] or speaker_from_page_title(page_title)
+            print(f"Downloading {index}: {speaker or '[unattributed]'} -> {path.name}")
+            download(source, path, s)
+            records.append({
+                "index": index,
+                "file": str(path),
+                "page": page["page"],
+                "source": source,
+                "house": collection["house"],
+                "source_id": collection["source_id"],
+                "collection_title": collection["title"],
+                "page_title": page_title,
+                "speaker": normalize_speaker(speaker),
+            })
+            index += 1
+        except Exception as exc:
+            print("Download failed:", page["page"], exc)
 
     (out / "videos.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
     named = sum(1 for item in records if item.get("speaker"))
