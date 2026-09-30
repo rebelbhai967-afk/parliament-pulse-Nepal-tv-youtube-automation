@@ -155,10 +155,15 @@ def build_long_windows(segments, max_windows=3):
         if 181 <= end - start <= 300:
             text = " ".join(clean(s.get("nepali")) for s in segments[left:right + 1])
             hook_text = " ".join(clean(s.get("nepali")) for s in segments[left:min(left + 2, right + 1)])
+            logs = [float(s.get("avg_logprob", 0.0)) for s in segments[left:right + 1] if s.get("avg_logprob") is not None]
+            avg_logprob = sum(logs) / len(logs) if logs else None
+            if avg_logprob is not None and avg_logprob < -0.95:
+                continue
             windows.append({
                 "start": round(start, 3), "end": round(end, 3),
                 "duration": round(end - start, 3),
-                "score": score(text), "text": text, "hook_text": hook_text,
+                "score": score(text, avg_logprob), "text": text, "hook_text": hook_text,
+                "avg_logprob": avg_logprob,
             })
 
     unique = {}
@@ -193,6 +198,8 @@ def main(input_dir, output_file):
                 continue
             c = build_candidate(segments, i)
             if c["duration"] < 60 or c["duration"] > 180:
+                continue
+            if c.get("avg_logprob") is not None and c["avg_logprob"] < -0.95:
                 continue
             if speaker.lower() in GENERIC_SPEAKERS:
                 speaker = ""
