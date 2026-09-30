@@ -170,11 +170,13 @@ def build(story, kind, index, summaries):
         title = f"Parliamentary Discussion | {topic_label}"
     if contains_banned(title):
         title = "Parliamentary Discussion | Nepal"
+
+    # Final deterministic scrub. This runs after every fallback so a source-page
+    # label, translated summary, or other metadata field cannot leak a loaded
+    # token such as "exposed" into the publishable title.
     title = neutralize_loaded_terms(title)
     if contains_banned(title):
-        # Last-resort deterministic safe title. Never publish loaded wording.
-        title = f"Parliamentary Discussion | {topic_label}"
-    title = neutralize_loaded_terms(title)
+        title = "Parliamentary Discussion | Nepal"
     title = re.sub(r"\s+", " ", title).strip(" |:-")[:100]
     description = (
         f"{speaker_text} discusses a documented parliamentary issue in Nepal.\n"
