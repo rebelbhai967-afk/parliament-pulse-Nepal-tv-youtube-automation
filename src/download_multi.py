@@ -127,7 +127,7 @@ def download(url, path, s):
                     f.write(chunk)
 
 
-def main(collections_json, output_dir, max_collections=4, max_videos=20):
+def main(collections_json, output_dir, max_collections=16, max_videos=24):
     data = json.loads(Path(collections_json).read_text(encoding="utf-8"))
     collections = data.get("collections", [])
     selected = []
