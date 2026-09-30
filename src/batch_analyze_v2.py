@@ -253,8 +253,9 @@ def main(input_dir, output_file):
         if house and house not in houses:
             houses.append(house)
 
-    # Prefer one Long story from each House. Speaker attribution is used when
-    # available, but an unattributed source is never mislabeled as a speaker.
+    # Prefer one Long story from each House. Speaker attribution is used only
+    # when the official page exposes a verified name; otherwise the story remains
+    # unattributed rather than blocking the entire daily build.
     house_order = []
     for candidate in long_candidates:
         house = clean(candidate.get("house"))
@@ -358,8 +359,9 @@ def main(input_dir, output_file):
     for c in short_pool:
         if c["video"] in used or c["video"] in short_used:
             continue
-        if is_procedural_label(c.get("page_title", "")) and len(short_stories) < 2:
-            # Skip procedural session labels when substantive candidate material exists.
+        if is_procedural_label(c.get("page_title", "")):
+            # Never use a purely procedural/session label as a Short when a
+            # substantive candidate exists elsewhere in the pool.
             continue
         if c["duration"] <= 89:
             piece = dict(c)
@@ -418,7 +420,12 @@ def main(input_dir, output_file):
     Path(output_file).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Candidates: {len(candidates)} | Long stories: {len(long_stories)} | Short stories: {len(short_stories)}")
     if len(long_stories) < 2 or len(short_stories) < 2:
-        raise RuntimeError(f"Not enough diverse stories for a safe 2+2 daily build: {len(long_stories)} long, {len(short_stories)} short.")
+        raise RuntimeError(
+            f"Not enough diverse stories for a safe 2+2 daily build: "
+            f"{len(long_stories)} long, {len(short_stories)} short. "
+            "Speaker names are optional; the failure means there were not enough "
+            "substantive, transcript-grounded source windows."
+        )
 
 
 if __name__ == "__main__":
