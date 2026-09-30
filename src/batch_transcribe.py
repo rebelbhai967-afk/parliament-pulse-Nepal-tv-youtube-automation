@@ -29,7 +29,7 @@ def transcribe_video(model, video_path, output_path):
     audio_path = output.parent / f"{video.stem}.wav"
     run_ffmpeg(video, audio_path)
 
-    beam_size = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
+    beam_size = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
     temperature = float(os.getenv("WHISPER_TEMPERATURE", "0.0"))
     print(f"Whisper: large-v3-turbo / int8 / beam={beam_size}")
 
@@ -68,7 +68,10 @@ def transcribe_video(model, video_path, output_path):
             transcript["segments"].append({
                 "start": float(segment.start),
                 "end": float(segment.end),
-                "nepali": text
+                "nepali": text,
+                "avg_logprob": float(getattr(segment, "avg_logprob", 0.0)),
+                "compression_ratio": float(getattr(segment, "compression_ratio", 0.0)),
+                "no_speech_prob": float(getattr(segment, "no_speech_prob", 0.0)),
             })
 
     with open(output, "w", encoding="utf-8") as file:
