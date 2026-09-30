@@ -20,6 +20,20 @@ def clean(text):
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
+def transcript_quality_penalty(text):
+    text = clean(text)
+    dev = len(re.findall(r"[\u0900-\u097F]", text))
+    latin = len(re.findall(r"[A-Za-z]", text))
+    letters = dev + latin
+    if letters < 30:
+        return -10
+    ratio = dev / letters
+    if ratio < 0.45:
+        return -12
+    if ratio < 0.60:
+        return -5
+    return 0
+
 def score(text):
     text = clean(text)
     value = sum(v for k, v in KEYWORDS.items() if k in text)
@@ -28,6 +42,9 @@ def score(text):
         value += 3
     if 100 <= len(text) <= 650:
         value += 5
+    # Down-rank likely garbled/Latin-heavy Nepali transcription so it does not
+    # become a top editorial pick merely because of keyword noise.
+    value += transcript_quality_penalty(text)
     return value
 
 
