@@ -266,14 +266,22 @@ def main(input_dir, output_file):
 
     for preferred_house in preferred_houses:
         house_candidates = [c for c in long_candidates if clean(c.get("house")) == preferred_house]
+
+        # Prefer substantive/member-led source pages. Procedural labels such as
+        # "Annual Report", "Zero Hour" or "Bill Presented" are not speaker
+        # attribution and should not become the main Long story when a
+        # non-procedural window exists for the same House.
+        substantive = [c for c in house_candidates if not is_procedural_label(c.get("page_title", ""))]
+        if substantive:
+            house_candidates = substantive
+
         house_candidates.sort(
-        key=lambda c: (
-            0 if is_procedural_label(c.get("page_title", "")) else 1,
-            1 if clean(c.get("speaker")) else 0,
-            c.get("score", 0),
-        ),
-        reverse=True,
-    )
+            key=lambda c: (
+                1 if clean(c.get("speaker")) else 0,
+                c.get("score", 0),
+            ),
+            reverse=True,
+        )
         for candidate in house_candidates:
             if len(long_stories) >= 2:
                 break
