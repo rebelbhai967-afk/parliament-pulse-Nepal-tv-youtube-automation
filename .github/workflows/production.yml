@@ -1,6 +1,9 @@
 name: Parliament Pulse Nepal Production
 
 on:
+  push:
+    paths:
+      - ".github/workflows/production.yml"
   workflow_dispatch:
     inputs:
       slot:
