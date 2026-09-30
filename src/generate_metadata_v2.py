@@ -24,6 +24,28 @@ def safe_title_topic(summary, fallback):
         return fallback
     return summary
 
+def neutralize_loaded_terms(text):
+    """Keep translated topic text neutral enough for titles/metadata validation."""
+    text = clean(text)
+    replacements = {
+        "exposed": "discussed",
+        "shocking": "notable",
+        "unbelievable": "reported",
+        "destroyed": "affected",
+        "traitor": "political figure",
+        "disgrace": "controversy",
+        "scandal": "issue",
+        "you won't believe": "reported",
+        "breaking": "latest",
+        "must watch": "discussion",
+        "viral": "widely discussed",
+        "sensational": "notable",
+        "historic": "significant",
+    }
+    for old, new in replacements.items():
+        text = re.sub(rf"\b{re.escape(old)}\b", new, text, flags=re.I)
+    return clean(text)
+
 TOPIC_LABELS = [
     ("water", "Water Management"),
     ("खाने पानी", "Water Management"),
@@ -86,7 +108,9 @@ def build(story, kind, index, summaries):
         if summary:
             break
 
-    safe_topic = re.sub(r"[^A-Za-z0-9 ,&()\-]", "", usable_english_summary(summary)).strip()
+    safe_topic = neutralize_loaded_terms(
+        re.sub(r"[^A-Za-z0-9 ,&()\-]", "", usable_english_summary(summary)).strip()
+    )
     topic_label = fallback_topic(issue)
     title_topic = safe_title_topic(safe_topic, topic_label)
     hook = story.get("opening_hook") or {}
@@ -108,6 +132,8 @@ def build(story, kind, index, summaries):
         title = f"{speaker_text} | {topic_label}"
     if contains_banned(title):
         title = f"Parliamentary Discussion | {topic_label}"
+    if contains_banned(title):
+        title = "Parliamentary Discussion | Nepal"
     title = re.sub(r"\s+", " ", title).strip()[:100]
     description = (
         f"{speaker_text} discusses a documented parliamentary issue in Nepal.\n"
