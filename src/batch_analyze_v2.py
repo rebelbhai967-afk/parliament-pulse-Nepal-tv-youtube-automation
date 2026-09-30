@@ -127,10 +127,9 @@ def main(input_dir, output_file):
         video = str(Path("data/videos") / (transcript_file.stem + ".mp4"))
         vm = meta.get(video, {})
         speaker = clean(vm.get("speaker"))
-        if not speaker:
-            # Never select a story whose speaker attribution was not verified
-            # from the official Parliament video page.
-            continue
+        # Speaker names are optional. Never infer a name from a procedural
+        # Parliament page label; keep the story attributable to the official
+        # source page and House even when no member name is exposed.
         for i, seg in enumerate(segments):
             if not clean(seg.get("nepali")):
                 continue
@@ -156,8 +155,6 @@ def main(input_dir, output_file):
         video = str(Path("data/videos") / (transcript_file.stem + ".mp4"))
         vm = meta.get(video, {})
         speaker = clean(vm.get("speaker"))
-        if not speaker:
-            continue
         for w in build_long_windows(segments):
             w.update({"video": video, "transcript": str(transcript_file),
                       "speaker": clean(vm.get("speaker")), "house": vm.get("house", ""),
@@ -219,8 +216,8 @@ def main(input_dir, output_file):
             used.add(video)
             break
 
-    # Fill any remaining Long slot from the strongest unused named-speaker
-    # window if one House does not have an eligible long recording.
+    # Fill any remaining Long slot from the strongest unused window if one
+    # House does not have a second eligible long recording.
     if len(long_stories) < 2:
         for candidate in long_candidates:
             if len(long_stories) >= 2:
@@ -232,7 +229,7 @@ def main(input_dir, output_file):
                 "pieces": [candidate],
                 "duration": candidate["duration"],
                 "score": candidate["score"],
-                "speakers": [candidate["speaker"]],
+                "speakers": [candidate["speaker"]] if candidate.get("speaker") else [],
                 "houses": [candidate["house"]] if candidate["house"] else [],
                 "topic_text": candidate["text"],
             }))
@@ -312,7 +309,7 @@ def main(input_dir, output_file):
         "target": {"long": 2, "short": 2},
         "selection_rules": [
             "Candidate pool comes from both National Assembly and House of Representatives.",
-            "Every selected story requires verified speaker attribution from the official Parliament video page; unattributed source pages are excluded from selection.",
+            "Speaker names are included only when exposed by the official Parliament video page; otherwise no name is inferred.",
             "Long stories are 181–600 seconds and use distinct parliamentary source windows.",
             "Short/Reel stories are under 90 seconds and are selected from stories not used by the Long set.",
             "Speaker names come from official Parliament video-page labels when available.",
