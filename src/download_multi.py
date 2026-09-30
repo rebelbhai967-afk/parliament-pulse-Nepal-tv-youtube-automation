@@ -73,16 +73,29 @@ def speaker_from_link(text):
     return normalize_speaker(text)
 
 def speaker_from_page_title(title):
-    """Extract a likely member name from the final meaningful title component."""
+    """Extract a likely member name only from a clearly name-like title component."""
     title = clean(title)
     if not title:
         return ""
-    parts = re.split(r"\s*(?:/|\\||:|–|—|- )\s*", title)
-    for part in reversed(parts):
+    # Parliament pages often append a member after a procedural/topic label.
+    parts = re.split(r"\s*(?:/|\\||:|–|—)\s*", title)
+    candidates = list(reversed([clean(x) for x in parts if clean(x)]))
+    # Prefer components containing an honorific/member cue, then ordinary two-part names.
+    for part in candidates:
+        if re.search(r"\b(?:MP|Hon\.?|माननीय|मा\.?|सांसद)\b", part, re.I):
+            cleaned = re.sub(r"\b(?:MP|Hon\.?|माननीय|मा\.?|सांसद)\b", " ", part, flags=re.I)
+            candidate = normalize_speaker(cleaned)
+            if candidate:
+                return candidate
+    for part in candidates:
         candidate = normalize_speaker(part)
-        if candidate:
+        if candidate and not is_procedural_label_text(candidate):
             return candidate
     return ""
+
+def is_procedural_label_text(text):
+    value = clean(text).lower()
+    return bool(value) and any(term in value for term in PROCEDURAL_SPEAKER_TERMS)
 
 
 def video_pages(collection, s):
@@ -116,7 +129,16 @@ def source_from_page(page_url, s):
     response = s.get(page_url, timeout=30, verify=False)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
-    title = clean((soup.find("h1").get_text(" ", strip=True) if soup.find("h1") else soup.title.get_text(" ", strip=True) if soup.title else ""))
+    title_candidates = []
+    h1 = soup.find("h1")
+    if h1:
+        title_candidates.append(h1.get_text(" ", strip=True))
+    og = soup.find("meta", attrs={"property": "og:title"})
+    if og and og.get("content"):
+        title_candidates.append(clean(og.get("content")))
+    if soup.title:
+        title_candidates.append(soup.title.get_text(" ", strip=True))
+    title = next((x for x in title_candidates if clean(x)), "")
     for tag in soup.find_all(["video", "source", "iframe"]):
         for attr in ["src", "data-src", "data-video"]:
             value = clean(tag.get(attr))
