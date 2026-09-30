@@ -296,6 +296,9 @@ def main(input_dir, output_file):
         # attribution and should not become the main Long story when a
         # non-procedural window exists for the same House.
         substantive = [c for c in house_candidates if not is_procedural_label(c.get("page_title", ""))]
+        # Prefer member/topic pages when available, but do not make a
+        # procedural archive label a hard exclusion. The transcript itself
+        # remains the evidence for whether the window is substantive.
         if substantive:
             house_candidates = substantive
 
@@ -334,8 +337,6 @@ def main(input_dir, output_file):
         for candidate in long_candidates:
             if len(long_stories) >= 2:
                 break
-            if is_procedural_label(candidate.get("page_title", "")):
-                continue
             video = candidate["video"]
             if video in used or long_source_count.get(video, 0) >= 1:
                 continue
@@ -393,8 +394,10 @@ def main(input_dir, output_file):
     for c in short_pool:
         if c["video"] in used or c["video"] in short_used:
             continue
-        if is_procedural_label(c.get("page_title", "")):
-            continue
+        # A procedural page title is not a speaker name, but it can still
+        # contain a substantive transcript window. Do not discard the clip
+        # solely because the archive label is procedural; transcript quality
+        # and topic relevance are the editorial evidence.
         if c["duration"] <= 89:
             piece = dict(c)
             short_stories.append(enrich_piece({
