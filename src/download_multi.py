@@ -38,7 +38,8 @@ PROCEDURAL_SPEAKER_TERMS = (
     "सभासमक्ष पेस", "सभा समक्ष पेस", "विधेयक", "प्रस्तुत", "प्रस्ताव",
     "सम्माननीय अध्यक्ष", "अध्यक्ष", "national anthem", "zero hour",
     "special hour", "prastav", "bidhyak", "pratibedan", "sammananiye",
-    "meeting", "session", "report", "presented", "proposal",
+    "meeting", "session", "report", "presented", "proposal", "annual report",
+    "bill", "exposed", "shocking", "unbelievable", "breaking", "viral",
 )
 
 def looks_like_person_name(text):
