@@ -9,6 +9,10 @@ BANNED_TITLE_PHRASES = [
     "must watch", "viral", "sensational", "historic!!!"
 ]
 
+def contains_banned_phrase(text):
+    lowered = str(text or "").lower()
+    return any(re.search(rf"(?<![a-z]){re.escape(phrase)}(?![a-z])", lowered) for phrase in BANNED_TITLE_PHRASES)
+
 def validate_item(item, kind):
     errors = []
     title = str(item.get("title", "")).strip()
@@ -39,15 +43,12 @@ def validate_item(item, kind):
 
     lowered_title = title.lower()
     for phrase in BANNED_TITLE_PHRASES:
-        if phrase in lowered_title:
+        if re.search(rf"(?<![a-z]){re.escape(phrase)}(?![a-z])", lowered_title):
             errors.append(f"loaded/clickbait title phrase: {phrase}")
 
-    # Source quotations may legitimately contain words that would be clickbait
-    # when used editorially. Validate the title and topic summary, not raw
-    # transcript quotations embedded in the description.
-    lowered_context = topic_summary.lower()
+    # Topic summaries are also user-facing metadata, so they must remain neutral.
     for phrase in BANNED_TITLE_PHRASES:
-        if phrase in lowered_context:
+        if re.search(rf"(?<![a-z]){re.escape(phrase)}(?![a-z])", topic_summary.lower()):
             errors.append(f"loaded/clickbait topic phrase: {phrase}")
 
     if re.search(r"!{2,}|\?{2,}|\bOMG\b|\bSHOCKING\b", title, re.I):
