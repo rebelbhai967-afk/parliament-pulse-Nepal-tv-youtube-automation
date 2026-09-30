@@ -250,6 +250,7 @@ def main(input_dir, output_file):
     # procedural page titles alone discard usable transcript windows: the
     # transcript itself is the editorial evidence. We only reject very short
     # or very low-information transcript windows.
+    used = set()
     short_source_pool, short_per_video = [], {}
     for c in candidates:
         if c["video"] in used:
@@ -327,12 +328,14 @@ def main(input_dir, output_file):
             used.add(video)
             break
 
-    # Fill any remaining Long slot from the strongest unused window if one
-    # House does not have a second eligible long recording.
+    # Fill any remaining Long slot from the strongest unused substantive window.
+    # Procedural page labels are never promoted into a Long story.
     if len(long_stories) < 2:
         for candidate in long_candidates:
             if len(long_stories) >= 2:
                 break
+            if is_procedural_label(candidate.get("page_title", "")):
+                continue
             video = candidate["video"]
             if video in used or long_source_count.get(video, 0) >= 1:
                 continue
@@ -389,6 +392,8 @@ def main(input_dir, output_file):
     )
     for c in short_pool:
         if c["video"] in used or c["video"] in short_used:
+            continue
+        if is_procedural_label(c.get("page_title", "")):
             continue
         if c["duration"] <= 89:
             piece = dict(c)
