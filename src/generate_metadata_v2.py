@@ -16,7 +16,7 @@ TITLE_BANNED = (
 
 def contains_banned(text):
     lowered = clean(text).lower()
-    return any(term in lowered for term in TITLE_BANNED)
+    return any(re.search(rf"(?<![a-z]){re.escape(term)}(?![a-z])", lowered) for term in TITLE_BANNED)
 
 def safe_title_topic(summary, fallback):
     summary = clean(summary)
@@ -145,15 +145,16 @@ def build(story, kind, index, summaries):
     source_label = source_topic_label(story.get("source_title", ""))
     if not safe_topic and source_label:
         topic_label = source_label
+    topic_label = neutralize_loaded_terms(topic_label)
     title_topic = safe_title_topic(safe_topic, topic_label)
     hook = story.get("opening_hook") or {}
     hook_text = clean(hook.get("text"))
+    house_text = houses[0] if houses else "Nepal Parliament"
     if kind == "long":
-        title = f"{speaker_text} | {title_topic[:65]}"
-        if safe_topic else f"{speaker_text} | {topic_label}"
+        title = f"{speaker_text} | {title_topic[:58]} | {house_text}"
     else:
         speaker = speakers[0] if speakers else safe_speaker(story.get("speaker"))
-        title = f"{speaker} | {title_topic[:60]}" if speaker else f"{topic_label} | {houses[0] if houses else 'Nepal Parliament'}"
+        title = f"{speaker} | {title_topic[:55]} | {house_text}" if speaker else f"{title_topic[:55]} | {house_text}"
 
     title = re.sub(r"\s+", " ", title).strip()
     # Final safety pass: no loaded/clickbait wording may enter a title
