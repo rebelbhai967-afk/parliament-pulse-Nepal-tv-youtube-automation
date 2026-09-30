@@ -13,28 +13,55 @@ KEYWORDS = {
     "रोजगारी": 4, "महँगी": 5, "विकास": 4, "सुरक्षा": 5, "सीमा": 5, "प्रतिवेदन": 5,
 }
 STRONG = ["गम्भीर", "आवश्यक", "तत्काल", "सरकारले", "मन्त्रालयले", "निर्णय", "घोषणा", "प्रस्ताव", "जवाफदेही"]
-GENERIC_SPEAKERS = {"", "zero hour", "special hour", "jawaf", "prastav prastut", "ninrnayartha prastut", "samjhauta pes", "summary", "first meeting"}
+GENERIC_SPEAKERS = {
+    "", "zero hour", "special hour", "jawaf", "prastav prastut",
+    "ninrnayartha prastut", "samjhauta pes", "summary", "first meeting",
+    "meeting", "national anthem", "bidhyak prastut", "pratibedan pes",
+    "pratibedhan pes", "sammananiye sabhamukh", "सम्माननीय अध्यक्ष", "शून्य समय",
+}
 
 
 def clean(text):
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
-def transcript_quality_penalty(text):
+COMMON_NEPALI = {
+    "यो","त्यो","यस","यसको","यसमा","हामी","हाम्रो","उहाँ","उनी","उहाँले",
+    "सरकार","मन्त्रालय","मन्त्री","सभामुख","अध्यक्ष","सांसद","संसद","कानुन",
+    "विधेयक","बजेट","प्रश्न","जवाफ","निर्णय","समिति","प्रतिवेदन","देश","जनता",
+    "भएको","भएका","गरेको","गर्न","गर्ने","गर्नुपर्छ","भन्ने","भने","पनि","र","तर",
+    "मा","बाट","लाई","ले","को","का","की","छ","छन्","हो","हुन","हुन्छ","थियो",
+    "थिए","किन","कसरी","कति","कहिले","जहाँ","जुन","तथा","वा","अथवा","साथै",
+    "लागि","मार्फत","सम्बन्धी","बारेमा","भित्र","बाहिर","समय","आज","भोलि"
+}
+
+def transcript_quality_penalty(text, avg_logprob=None):
     text = clean(text)
     dev = len(re.findall(r"[\u0900-\u097F]", text))
     latin = len(re.findall(r"[A-Za-z]", text))
     letters = dev + latin
+    penalty = 0
     if letters < 30:
-        return -10
-    ratio = dev / letters
+        penalty -= 10
+    ratio = dev / letters if letters else 0
     if ratio < 0.45:
-        return -12
-    if ratio < 0.60:
-        return -5
-    return 0
+        penalty -= 12
+    elif ratio < 0.60:
+        penalty -= 5
+    tokens = [t.strip(".,!?;:।") for t in text.split()]
+    common_ratio = sum(1 for t in tokens if t in COMMON_NEPALI) / max(1, len(tokens))
+    if len(tokens) >= 40 and common_ratio < 0.06:
+        penalty -= 10
+    elif len(tokens) >= 40 and common_ratio < 0.10:
+        penalty -= 5
+    if avg_logprob is not None:
+        if avg_logprob < -1.0:
+            penalty -= 10
+        elif avg_logprob < -0.7:
+            penalty -= 5
+    return penalty
 
-def score(text):
+def score(text, avg_logprob=None):
     text = clean(text)
     value = sum(v for k, v in KEYWORDS.items() if k in text)
     value += 2 * sum(1 for p in STRONG if p in text)
@@ -42,9 +69,7 @@ def score(text):
         value += 3
     if 100 <= len(text) <= 650:
         value += 5
-    # Down-rank likely garbled/Latin-heavy Nepali transcription so it does not
-    # become a top editorial pick merely because of keyword noise.
-    value += transcript_quality_penalty(text)
+    value += transcript_quality_penalty(text, avg_logprob)
     return value
 
 
@@ -76,7 +101,9 @@ def build_candidate(segments, i, min_s=60, max_s=180):
             right -= 1; end = float(segments[right].get("end", end))
     text = " ".join(clean(s.get("nepali")) for s in segments[left:right+1])
     opening_text = " ".join(clean(s.get("nepali")) for s in segments[left:min(left + 2, right + 1)])
-    return {"start": round(start,3), "end": round(end,3), "duration": round(end-start,3), "score": score(text), "text": text, "hook_text": opening_text}
+    logs = [float(s.get("avg_logprob", 0.0)) for s in segments[left:right+1] if s.get("avg_logprob") is not None]
+    avg_logprob = sum(logs) / len(logs) if logs else None
+    return {"start": round(start,3), "end": round(end,3), "duration": round(end-start,3), "score": score(text, avg_logprob), "text": text, "hook_text": opening_text, "avg_logprob": avg_logprob}
 
 def build_long_windows(segments, max_windows=3):
     """Create coherent 3–5 minute windows around strong transcript anchors."""
@@ -153,12 +180,15 @@ def main(input_dir, output_file):
             c = build_candidate(segments, i)
             if c["duration"] < 60 or c["duration"] > 180:
                 continue
+            if speaker.lower() in GENERIC_SPEAKERS:
+                speaker = ""
             c.update({
                 "video": video,
                 "transcript": str(transcript_file),
                 "speaker": speaker,
                 "house": vm.get("house", ""),
                 "source_page": vm.get("page", ""),
+                "page_title": vm.get("page_title", ""),
                 "collection_title": vm.get("collection_title", ""),
             })
             candidates.append(c)
@@ -173,9 +203,13 @@ def main(input_dir, output_file):
         vm = meta.get(video, {})
         speaker = clean(vm.get("speaker"))
         for w in build_long_windows(segments):
+            sp = clean(vm.get("speaker"))
+            if sp.lower() in GENERIC_SPEAKERS:
+                sp = ""
             w.update({"video": video, "transcript": str(transcript_file),
-                      "speaker": clean(vm.get("speaker")), "house": vm.get("house", ""),
-                      "source_page": vm.get("page", ""), "collection_title": vm.get("collection_title", "")})
+                      "speaker": sp, "house": vm.get("house", ""),
+                      "source_page": vm.get("page", ""), "page_title": vm.get("page_title", ""),
+                      "collection_title": vm.get("collection_title", "")})
             long_candidates.append(w)
     long_candidates.sort(key=lambda x: x["score"], reverse=True)
 
@@ -277,6 +311,7 @@ def main(input_dir, output_file):
                     "speakers": [x["speaker"] for x in (anchor, other) if x["speaker"]],
                     "houses": sorted({x["house"] for x in (anchor, other) if x["house"]}),
                     "topic_text": anchor["text"] + " " + other["text"],
+                    "source_title": " / ".join(x.get("page_title", "") for x in (anchor, other) if x.get("page_title")),
                 }))
                 used.update([anchor["video"], other["video"]])
                 break
@@ -297,6 +332,7 @@ def main(input_dir, output_file):
                 "speaker": piece["speaker"],
                 "houses": [piece["house"]] if piece["house"] else [],
                 "topic_text": piece["text"],
+                "source_title": piece.get("page_title", ""),
                 "video": piece["video"],
             }))
             short_used.add(c["video"])
@@ -315,6 +351,7 @@ def main(input_dir, output_file):
                 "speaker": c2["speaker"],
                 "houses": [c2["house"]] if c2["house"] else [],
                 "topic_text": c2["text"],
+                "source_title": c2.get("page_title", ""),
                 "video": c2["video"],
             }))
             short_used.add(c["video"])
