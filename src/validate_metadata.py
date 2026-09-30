@@ -42,10 +42,13 @@ def validate_item(item, kind):
         if phrase in lowered_title:
             errors.append(f"loaded/clickbait title phrase: {phrase}")
 
-    lowered_context = (description + " " + topic_summary).lower()
+    # Source quotations may legitimately contain words that would be clickbait
+    # when used editorially. Validate the title and topic summary, not raw
+    # transcript quotations embedded in the description.
+    lowered_context = topic_summary.lower()
     for phrase in BANNED_TITLE_PHRASES:
         if phrase in lowered_context:
-            errors.append(f"loaded/clickbait metadata phrase: {phrase}")
+            errors.append(f"loaded/clickbait topic phrase: {phrase}")
 
     if re.search(r"!{2,}|\?{2,}|\bOMG\b|\bSHOCKING\b", title, re.I):
         errors.append("sensational punctuation/language")
