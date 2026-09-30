@@ -25,6 +25,20 @@ def clean(text):
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
+PROCEDURAL_LABELS = (
+    "zero hour", "special hour", "jawaf", "prastav prastut",
+    "pratibedan pes", "pratibedhan pes", "bidhyak prastut",
+    "national anthem", "sammananiye sabhamukh", "सम्माननीय अध्यक्ष",
+    "शून्य समय", "प्रतिवेदन", "वार्षिक प्रतिवेदन", "सभासमक्ष",
+    "सभा समक्ष", "विधेयक प्रस्तुत", "प्रस्ताव प्रस्तुत", "बैठक",
+    "अधिवेशन", "प्रस्तुत", "प्रस्ताव", "विधेयक"
+)
+
+def is_procedural_label(text):
+    value = clean(text).lower()
+    return bool(value) and any(term in value for term in PROCEDURAL_LABELS)
+
+
 COMMON_NEPALI = {
     "यो","त्यो","यस","यसको","यसमा","हामी","हाम्रो","उहाँ","उनी","उहाँले",
     "सरकार","मन्त्रालय","मन्त्री","सभामुख","अध्यक्ष","सांसद","संसद","कानुन",
@@ -244,7 +258,14 @@ def main(input_dir, output_file):
 
     for preferred_house in preferred_houses:
         house_candidates = [c for c in long_candidates if clean(c.get("house")) == preferred_house]
-        house_candidates.sort(key=lambda c: (1 if clean(c.get("speaker")) else 0, c.get("score", 0)), reverse=True)
+        house_candidates.sort(
+        key=lambda c: (
+            0 if is_procedural_label(c.get("page_title", "")) else 1,
+            1 if clean(c.get("speaker")) else 0,
+            c.get("score", 0),
+        ),
+        reverse=True,
+    )
         for candidate in house_candidates:
             if len(long_stories) >= 2:
                 break
@@ -318,9 +339,20 @@ def main(input_dir, output_file):
 
     short_stories = []
     short_used = set()
-    short_pool = sorted(pool, key=lambda c: (1 if clean(c.get("speaker")) else 0, c.get("score", 0)), reverse=True)
+    short_pool = sorted(
+        pool,
+        key=lambda c: (
+            0 if is_procedural_label(c.get("page_title", "")) else 1,
+            1 if clean(c.get("speaker")) else 0,
+            c.get("score", 0),
+        ),
+        reverse=True,
+    )
     for c in short_pool:
         if c["video"] in used or c["video"] in short_used:
+            continue
+        if is_procedural_label(c.get("page_title", "")) and len(short_stories) < 2:
+            # Skip procedural session labels when substantive candidate material exists.
             continue
         if c["duration"] <= 89:
             piece = dict(c)
