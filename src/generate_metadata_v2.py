@@ -8,6 +8,19 @@ BASE_TAGS = [
     "House of Representatives Nepal", "National Assembly Nepal", "Parliament Pulse Nepal TV"
 ]
 
+TITLE_BANNED = (
+    "shocking", "unbelievable", "destroyed", "exposed", "traitor",
+    "disgrace", "scandal", "you won't believe", "breaking", "must watch",
+    "viral", "sensational", "historic"
+)
+
+def safe_title_topic(summary, fallback):
+    summary = clean(summary)
+    lowered = summary.lower()
+    if not summary or any(term in lowered for term in TITLE_BANNED):
+        return fallback
+    return summary
+
 TOPIC_LABELS = [
     ("water", "Water Management"),
     ("खाने पानी", "Water Management"),
@@ -72,17 +85,18 @@ def build(story, kind, index, summaries):
 
     safe_topic = re.sub(r"[^A-Za-z0-9 ,&()\-]", "", usable_english_summary(summary)).strip()
     topic_label = fallback_topic(issue)
+    title_topic = safe_title_topic(safe_topic, topic_label)
     hook = story.get("opening_hook") or {}
     hook_text = clean(hook.get("text"))
     if kind == "long":
         title = f"{speaker_text} | {topic_label}"
         if safe_topic:
-            title = f"{speaker_text} | {safe_topic[:55]}"
+            title = f"{speaker_text} | {title_topic[:55]}"
     else:
         speaker = speakers[0] if speakers else clean(story.get("speaker"))
         title = f"{speaker} | {topic_label}" if speaker else f"{topic_label} | Nepal Parliament"
         if safe_topic:
-            title = f"{speaker} | {safe_topic[:60]}"
+            title = f"{speaker} | {title_topic[:60]}"
 
     title = re.sub(r"\s+", " ", title).strip()[:100]
     description = (
