@@ -35,8 +35,19 @@ PROCEDURAL_LABELS = (
 )
 
 def is_procedural_label(text):
-    value = clean(text).lower()
-    return bool(value) and any(term in value for term in PROCEDURAL_LABELS)
+    """Classify only the final archive label, not the session header.
+
+    Parliament page titles often look like:
+    "House session / Dhurba Raj Rai". The session header contains words such
+    as "meeting" or "assembly" even when the final component is a real member
+    name. Inspecting the whole title incorrectly marks every named-member page
+    as procedural.
+    """
+    value = clean(text)
+    if not value:
+        return False
+    tail = re.split(r"\s*(?:/|\||:)\s*", value)[-1].strip().lower()
+    return bool(tail) and any(term in tail for term in PROCEDURAL_LABELS)
 
 
 COMMON_NEPALI = {
