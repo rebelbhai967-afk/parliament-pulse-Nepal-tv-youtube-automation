@@ -44,7 +44,11 @@ def neutralize_loaded_terms(text):
     }
     for old, new in replacements.items():
         text = re.sub(rf"\b{re.escape(old)}\b", new, text, flags=re.I)
-    return clean(text)
+    # A second defensive pass prevents a replacement or punctuation boundary
+    # from accidentally leaving a banned token in user-facing metadata.
+    for banned in TITLE_BANNED:
+        text = re.sub(rf"(?<![A-Za-z]){re.escape(banned)}(?![A-Za-z])", "", text, flags=re.I)
+    return re.sub(r"\s+", " ", text).strip(" |:-")
 
 TOPIC_LABELS = [
     ("water", "Water Management"),
@@ -167,7 +171,11 @@ def build(story, kind, index, summaries):
     if contains_banned(title):
         title = "Parliamentary Discussion | Nepal"
     title = neutralize_loaded_terms(title)
-    title = re.sub(r"\s+", " ", title).strip()[:100]
+    if contains_banned(title):
+        # Last-resort deterministic safe title. Never publish loaded wording.
+        title = f"Parliamentary Discussion | {topic_label}"
+    title = neutralize_loaded_terms(title)
+    title = re.sub(r"\s+", " ", title).strip(" |:-")[:100]
     description = (
         f"{speaker_text} discusses a documented parliamentary issue in Nepal.\n"
         f"Speaker attribution: {attribution}\n\n"
