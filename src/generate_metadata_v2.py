@@ -206,6 +206,15 @@ def build(story, kind, index, summaries):
     ]
     community_prompt = prompts[(index - 1) % len(prompts)]
     description += f"\\n\\nCommunity note: {community_prompt}"
+    # Final deterministic scrub after every field has been assembled.
+    title = neutralize_loaded_terms(title)
+    topic_label = neutralize_loaded_terms(topic_label)
+    safe_topic = neutralize_loaded_terms(safe_topic)
+    description = neutralize_loaded_terms(description)
+    if contains_banned(title):
+        title = "Parliamentary Discussion | Nepal"
+    if contains_banned(description):
+        description = "Discussion from the Official Parliament of Nepal video archive."
     hashtags = ["#NepalParliament", "#NepalPolitics", "#ParliamentNews", "#NepalNews", "#ParliamentPulseNepalTV"]
     return {
         "index": index, "title": title, "description": description,
