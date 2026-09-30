@@ -1,0 +1,273 @@
+name: Parliament Pulse Nepal Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "Publishing slot"
+        required: true
+        default: evening
+        type: choice
+        options:
+          - morning
+          - evening
+  schedule:
+    - cron: "30 0 * * *"
+      timezone: "Asia/Kathmandu"
+    - cron: "0 12 * * *"
+      timezone: "Asia/Kathmandu"
+
+concurrency:
+  group: parliament-pulse-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  production-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      WHISPER_BEAM_SIZE: "5"
+      WHISPER_TEMPERATURE: "0.0"
+      WHISPER_CPU_THREADS: "2"
+      YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+      YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Verify YouTube publishing credentials
+        run: |
+          if [ -z "$YOUTUBE_CLIENT_SECRET_JSON" ] || [ -z "$YOUTUBE_TOKEN_JSON" ]; then
+            echo "Missing YOUTUBE_CLIENT_SECRET_JSON or YOUTUBE_TOKEN_JSON repository secret."
+            exit 1
+          fi
+          echo "YouTube publishing credentials are present."
+
+      - name: Install FFmpeg and fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-core
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile production pipeline
+        run: |
+          python -m py_compile             src/download_multi.py             src/batch_transcribe.py             src/batch_analyze_v2.py             src/editorial_hooks.py             src/normalize_selection.py             src/batch_translate.py             src/generate_metadata_v2.py             src/validate_metadata.py             src/editorial_gate.py             src/editorial_review.py             src/content_ledger.py             src/render_stories.py             src/assemble_stories.py             src/generate_thumbnails_v2.py             src/quality_control.py             src/youtube_upload.py             src/upload_youtube_batch.py
+
+      - name: Discover both Parliament Houses
+        run: |
+          mkdir -p data
+          python src/discover.py data/parliament_collections.json
+
+      - name: Download latest source pool
+        run: |
+          python src/download_multi.py data/parliament_collections.json data/videos 8 12
+
+      - name: Verify source diversity
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          items = json.loads(Path("data/videos/videos.json").read_text(encoding="utf-8"))
+          houses = sorted({x.get("house") for x in items if x.get("house")})
+          pages = [x.get("page") for x in items]
+          print("Source videos:", len(items))
+          print("Houses:", houses)
+          print("Named speakers:", sum(1 for x in items if x.get("speaker")))
+          if len(items) < 8:
+              raise RuntimeError(f"Need at least 8 distinct source videos; found {len(items)}")
+          if len(houses) < 2:
+              raise RuntimeError("Both Parliament Houses are required.")
+          if len(set(pages)) != len(pages):
+              raise RuntimeError("Duplicate source pages detected.")
+          PY
+
+      - name: Transcribe candidate videos
+        run: |
+          mkdir -p data/transcripts
+          python src/batch_transcribe.py data/videos data/transcripts
+
+      - name: Clean transcripts
+        run: |
+          mkdir -p data/transcripts_clean
+          python src/batch_clean.py data/transcripts data/transcripts_clean
+
+      - name: Select 2 Long + 2 Short stories
+        run: |
+          python src/batch_analyze_v2.py data/transcripts_clean data/multi_story_selection.json
+
+      - name: Normalize exact rendered windows
+        run: |
+          python src/normalize_selection.py             data/multi_story_selection.json             data/multi_story_selection.normalized.json
+          mv data/multi_story_selection.normalized.json data/multi_story_selection.json
+
+      - name: Translate subtitles and topic summaries
+        run: |
+          mkdir -p data/subtitles_v2
+          python src/batch_translate.py             data/transcripts_clean             data/subtitles_v2             data/subtitles_v2/topic_summaries.json
+
+      - name: Generate English-first metadata
+        run: |
+          mkdir -p data/metadata_v2
+          python src/generate_metadata_v2.py             data/multi_story_selection.json             data/metadata_v2             data/subtitles_v2/topic_summaries.json
+
+      - name: Validate metadata and neutrality
+        run: |
+          python src/validate_metadata.py data/metadata_v2
+
+      - name: Editorial safety gate
+        run: |
+          python src/editorial_gate.py             data/multi_story_selection.json             data/metadata_v2
+
+      - name: Build human editorial review queue
+        run: |
+          python src/editorial_review.py             data/multi_story_selection.json             data/metadata_v2/editorial_gate_report.json             data/editorial_review_queue.json
+
+      - name: Create publication ledger
+        run: |
+          python src/content_ledger.py             data/multi_story_selection.json             data/metadata_v2             data/content_ledger.json
+
+      - name: Render Long and Short masters
+        run: |
+          mkdir -p output/multi_story_pieces
+          python src/render_stories.py             data/multi_story_selection.json             data/subtitles_v2             output/multi_story_pieces
+          mkdir -p output/multi_story_masters
+          python src/assemble_stories.py             data/multi_story_selection.json             output/multi_story_pieces/.pieces             output/multi_story_masters
+
+      - name: Generate thumbnails
+        run: |
+          mkdir -p output/multi_story_thumbnails
+          python src/generate_thumbnails_v2.py             data/metadata_v2             output/multi_story_masters             output/multi_story_thumbnails
+
+      - name: Automated quality control
+        run: |
+          python src/quality_control.py             data/multi_story_selection.json             output/multi_story_masters             output/multi_story_thumbnails
+
+      - name: Verify exact daily target and House coverage
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("data/multi_story_selection.json").read_text(encoding="utf-8"))
+          longs = d.get("long_stories", [])
+          shorts = d.get("short_stories", [])
+          houses = {h for s in longs for h in (s.get("houses") or []) if h}
+          print("Long:", len(longs), "Short:", len(shorts), "Long Houses:", sorted(houses))
+          if len(longs) != 2 or len(shorts) != 2:
+              raise RuntimeError("Production requires exactly 2 Long + 2 Short.")
+          if len(houses & {"National Assembly", "House of Representatives"}) < 2:
+              raise RuntimeError("The two Long stories must cover both Parliament Houses.")
+          for kind, stories in (("long", longs), ("short", shorts)):
+              for i, s in enumerate(stories, 1):
+                  if not (s.get("opening_hook") or {}).get("text"):
+                      raise RuntimeError(f"{kind} {i}: missing opening hook")
+                  if not s.get("houses"):
+                      raise RuntimeError(f"{kind} {i}: missing House attribution")
+                  for p in s.get("pieces", []):
+                      if not p.get("source_page"):
+                          raise RuntimeError(f"{kind} {i}: missing official source page")
+          PY
+
+      - name: Calculate Nepal publishing times
+        id: timing
+        env:
+          SLOT_INPUT: ${{ inputs.slot }}
+        run: |
+          set -e
+          date_now=$(TZ=Asia/Kathmandu date +%Y-%m-%d)
+          hour_now=$(TZ=Asia/Kathmandu date +%H)
+          if [ -n "$SLOT_INPUT" ]; then
+            slot="$SLOT_INPUT"
+          elif [ "$hour_now" -lt 10 ]; then
+            slot="morning"
+          else
+            slot="evening"
+          fi
+
+          if [ "$slot" = "morning" ]; then
+            long_local="$date_now 07:30"
+            short_local="$date_now 08:00"
+          else
+            long_local="$date_now 18:30"
+            short_local="$date_now 19:00"
+          fi
+
+          now_epoch=$(TZ=Asia/Kathmandu date +%s)
+          long_epoch=$(TZ=Asia/Kathmandu date -d "$long_local" +%s)
+          if [ "$long_epoch" -le "$now_epoch" ]; then
+            next_date=$(TZ=Asia/Kathmandu date -d "$date_now +1 day" +%Y-%m-%d)
+            if [ "$slot" = "morning" ]; then
+              long_local="$next_date 07:30"
+              short_local="$next_date 08:00"
+            else
+              long_local="$next_date 18:30"
+              short_local="$next_date 19:00"
+            fi
+          fi
+
+          long_utc=$(TZ=Asia/Kathmandu date -d "$long_local" -u +%Y-%m-%dT%H:%M:%SZ)
+          short_utc=$(TZ=Asia/Kathmandu date -d "$short_local" -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "slot=$slot" >> "$GITHUB_OUTPUT"
+          echo "long_publish_at=$long_utc" >> "$GITHUB_OUTPUT"
+          echo "short_publish_at=$short_utc" >> "$GITHUB_OUTPUT"
+          echo "Publishing slot: $slot"
+          echo "Long publish: $long_local Nepal time ($long_utc UTC)"
+          echo "Short publish: $short_local Nepal time ($short_utc UTC)"
+
+      - name: Upload and schedule Long videos on YouTube
+        env:
+          CLIENT_SECRET: ${{ env.YOUTUBE_CLIENT_SECRET_JSON }}
+          TOKEN_JSON: ${{ env.YOUTUBE_TOKEN_JSON }}
+          LONG_PUBLISH_AT: ${{ steps.timing.outputs.long_publish_at }}
+        run: |
+          printf '%s' "$CLIENT_SECRET" > client_secret.json
+          printf '%s' "$TOKEN_JSON" > token.json
+          python src/upload_youtube_batch.py             output/multi_story_masters             data/metadata_v2             --client-secret client_secret.json             --token token.json             --privacy private             --kind long             --publish-at "$LONG_PUBLISH_AT"
+
+      - name: Upload and schedule Short videos on YouTube
+        env:
+          CLIENT_SECRET: ${{ env.YOUTUBE_CLIENT_SECRET_JSON }}
+          TOKEN_JSON: ${{ env.YOUTUBE_TOKEN_JSON }}
+          SHORT_PUBLISH_AT: ${{ steps.timing.outputs.short_publish_at }}
+        run: |
+          printf '%s' "$CLIENT_SECRET" > client_secret.json
+          printf '%s' "$TOKEN_JSON" > token.json
+          python src/upload_youtube_batch.py             output/multi_story_masters             data/metadata_v2             --client-secret client_secret.json             --token token.json             --privacy private             --kind short             --publish-at "$SHORT_PUBLISH_AT"
+
+      - name: Remove OAuth files
+        if: always()
+        run: rm -f client_secret.json token.json
+
+      - name: Upload production audit artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: parliament-pulse-production-audit-${{ steps.timing.outputs.slot }}
+          path: |
+            data/parliament_collections.json
+            data/videos/videos.json
+            data/multi_story_selection.json
+            data/metadata_v2/
+            data/editorial_review_queue.json
+            data/content_ledger.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload production masters for social platforms
+        uses: actions/upload-artifact@v6
+        with:
+          name: parliament-pulse-production-masters-${{ steps.timing.outputs.slot }}
+          path: |
+            output/multi_story_masters/
+            output/multi_story_thumbnails/
+          if-no-files-found: error
+          retention-days: 3
