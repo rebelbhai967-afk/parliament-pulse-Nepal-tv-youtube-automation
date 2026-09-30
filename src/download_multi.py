@@ -130,6 +130,7 @@ def source_from_page(page_url, s):
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
     title_candidates = []
+    speaker_hints = []
     h1 = soup.find("h1")
     if h1:
         title_candidates.append(h1.get_text(" ", strip=True))
@@ -138,13 +139,30 @@ def source_from_page(page_url, s):
         title_candidates.append(clean(og.get("content")))
     if soup.title:
         title_candidates.append(soup.title.get_text(" ", strip=True))
+
+    # The Parliament archive often exposes member names as child labels such as
+    # "video - Hon. Name" while the page title itself is a session/topic label.
+    # Capture those explicit labels rather than guessing a speaker from the
+    # procedural title.
+    for node in soup.find_all(string=re.compile(r"^\s*video\s*-\s*", re.I)):
+        hint = clean(node)
+        if hint:
+            speaker_hints.append(hint)
+
     title = next((x for x in title_candidates if clean(x)), "")
+    speaker_hint = ""
+    for hint in speaker_hints:
+        candidate = speaker_from_link(hint)
+        if candidate:
+            speaker_hint = candidate
+            break
+
     for tag in soup.find_all(["video", "source", "iframe"]):
         for attr in ["src", "data-src", "data-video"]:
             value = clean(tag.get(attr))
             if value and (".mp4" in value.lower() or ".m3u8" in value.lower() or "video" in value.lower()):
-                return urljoin(page_url, value), title
-    return None, title
+                return urljoin(page_url, value), title, speaker_hint
+    return None, title, speaker_hint
 
 
 def download(url, path, s):
@@ -224,14 +242,14 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
             page_source = None
             page_title = ""
             try:
-                page_source, page_title = source_from_page(page["page"], s)
+                page_source, page_title, page_speaker = source_from_page(page["page"], s)
             except Exception as exc:
                 print("Page metadata failed:", page["page"], exc)
             speaker = speaker or speaker_from_page_title(page_title)
             page_candidates.append({
                 "collection": collection,
                 "page": page,
-                "speaker": speaker,
+                "speaker": speaker or page_speaker,
                 "page_title": page_title,
                 "source": page_source,
             })
@@ -269,12 +287,12 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
             source = item.get("source")
             page_title = item.get("page_title", "")
             if not source:
-                source, page_title = source_from_page(page["page"], s)
+                source, page_title, page_speaker = source_from_page(page["page"], s)
             if not source:
                 print("Skipping: no video source", page["page"])
                 continue
             path = out / f"video_{index:03d}.mp4"
-            speaker = item["speaker"] or speaker_from_page_title(page_title)
+            speaker = item["speaker"] or page_speaker or speaker_from_page_title(page_title)
             print(f"Downloading {index}: {speaker or '[unattributed]'} -> {path.name}")
             download(source, path, s)
             records.append({
