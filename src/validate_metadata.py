@@ -32,7 +32,7 @@ def validate_item(item, kind):
         errors.append("missing verified speaker attribution")
     if not hook.get("text"):
         errors.append("missing transcript-grounded opening hook")
-    if not topic_summary and "Parliamentary Discussion in Nepal" in title:
+    if not topic_summary:
         errors.append("missing usable topic summary")
     if hook.get("strategy") not in {"question_hook", "public_issue_hook", "strong_quote_hook", "strongest_available"}:
         errors.append("invalid hook strategy")
