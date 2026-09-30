@@ -38,6 +38,8 @@ def validate_item(item, kind):
         errors.append("missing transcript-grounded opening hook")
     if not topic_summary:
         errors.append("missing usable topic summary")
+    if contains_banned_phrase(title):
+        errors.append("loaded/clickbait title phrase after normalization")
     if hook.get("strategy") not in {"question_hook", "public_issue_hook", "strong_quote_hook", "strongest_available"}:
         errors.append("invalid hook strategy")
 
