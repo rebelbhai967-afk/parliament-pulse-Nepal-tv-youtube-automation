@@ -189,6 +189,14 @@ def build(story, kind, index, summaries):
         "This edited clip removes non-substantive portions while preserving the meaning of the parliamentary statements. "
         "English subtitles are provided for accessibility."
     )
+    # Final metadata safety pass: translated summaries or source labels must never
+    # leak loaded/clickbait wording into publishable descriptions.
+    description = neutralize_loaded_terms(description)
+    if contains_banned(description):
+        description = " ".join(
+            part for part in description.split(" ")
+            if part.lower().strip(".,:;!?()[]{}\\\"'") not in TITLE_BANNED
+        )
     tags = BASE_TAGS + speakers[:4] + english_keywords(summary)[:18]
     tags = list(dict.fromkeys([x for x in tags if x]))[:30]
     prompts = [
