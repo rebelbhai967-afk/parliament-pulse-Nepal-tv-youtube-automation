@@ -133,7 +133,7 @@ def build(story, kind, index, summaries):
     houses = story.get("houses", [])
     issue = clean(story.get("topic_text", ""))[:220]
     speaker_text = " & ".join(speakers[:4]) if speakers else "Nepal Parliament"
-    attribution = "Verified speaker attribution from the official Parliament video page." if speakers else "Speaker name was not exposed on the official source page; no speaker name is inferred."
+    attribution = "Verified speaker attribution from the official Parliament video page." if speakers else "Speaker name was not provided on the official source page; no speaker name is inferred."
 
     source_videos = [p.get("video", "") for p in story.get("pieces", []) if p.get("video")]
     summary = ""
@@ -204,6 +204,7 @@ def build(story, kind, index, summaries):
         "tags": tags, "hashtags": hashtags, "category_id": "25", "privacy": "private",
         "speakers": speakers, "houses": houses, "story_text": issue,
         "source_title": story.get("source_title", ""),
+        "source_page": story.get("source_page") or (source_videos[0] if source_videos else ""),
         "speaker_attribution": attribution,
         "topic_summary": safe_topic or topic_label, "community_prompt": community_prompt,
         "hook": hook, "hook_strategy": story.get("hook_strategy", "strongest_available"),
