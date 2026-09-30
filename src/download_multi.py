@@ -31,6 +31,8 @@ GENERIC_SPEAKERS = {
     "bidhyak prastut", "सम्माननीय अध्यक्ष", "शून्य समय",
     "house of representatives", "national assembly", "federal parliament", "parliament",
     "annual report", "report presented", "proposal presented", "bill presented",
+    "प्रतिवेदन", "सभासमक्ष", "सभा समक्ष", "वार्षिक प्रतिवेदन", "आर्थिक वर्ष",
+    "प्रस्ताव प्रस्तुत", "विधेयक प्रस्तुत", "पेस", "प्रस्तुत", "बैठक", "अधिवेशन",
 }
 
 PROCEDURAL_SPEAKER_TERMS = (
@@ -47,7 +49,11 @@ def looks_like_person_name(text):
     if not text or any(ch.isdigit() for ch in text):
         return False
     normalized = text.lower()
+    if normalized in GENERIC_SPEAKERS:
+        return False
     if any(term in normalized for term in PROCEDURAL_SPEAKER_TERMS):
+        return False
+    if any(term in normalized for term in ("प्रतिवेदन", "सभासमक्ष", "सभा समक्ष", "वार्षिक प्रतिवेदन", "आर्थिक वर्ष", "प्रस्ताव", "विधेयक", "प्रस्तुत", "पेस")):
         return False
     tokens = [t for t in re.split(r"\s+", text) if t]
     if not 2 <= len(tokens) <= 6:
