@@ -241,6 +241,7 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
             # individual video page title can contain the member's real name.
             page_source = None
             page_title = ""
+            page_speaker = ""
             try:
                 page_source, page_title, page_speaker = source_from_page(page["page"], s)
             except Exception as exc:
@@ -286,6 +287,7 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
         try:
             source = item.get("source")
             page_title = item.get("page_title", "")
+            page_speaker = item.get("speaker", "")
             if not source:
                 source, page_title, page_speaker = source_from_page(page["page"], s)
             if not source:
