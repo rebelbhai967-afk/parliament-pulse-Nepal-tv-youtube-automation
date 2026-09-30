@@ -14,10 +14,13 @@ TITLE_BANNED = (
     "viral", "sensational", "historic"
 )
 
+def contains_banned(text):
+    lowered = clean(text).lower()
+    return any(term in lowered for term in TITLE_BANNED)
+
 def safe_title_topic(summary, fallback):
     summary = clean(summary)
-    lowered = summary.lower()
-    if not summary or any(term in lowered for term in TITLE_BANNED):
+    if not summary or contains_banned(summary):
         return fallback
     return summary
 
@@ -99,13 +102,12 @@ def build(story, kind, index, summaries):
             title = f"{speaker} | {title_topic[:60]}"
 
     title = re.sub(r"\s+", " ", title).strip()
-    # Never allow a loaded/clickbait term to survive through a speaker name,
-    # translated summary, or fallback. Fall back to a neutral topic title.
-    lowered_title = title.lower()
-    if any(term in lowered_title for term in TITLE_BANNED):
+    # Final safety pass: no loaded/clickbait wording may enter a title
+    # through a source label, speaker field, or translated summary.
+    if contains_banned(title):
         title = f"{speaker_text} | {topic_label}"
-        if any(term in title.lower() for term in TITLE_BANNED):
-            title = f"Parliamentary Discussion | {topic_label}"
+    if contains_banned(title):
+        title = f"Parliamentary Discussion | {topic_label}"
     title = re.sub(r"\s+", " ", title).strip()[:100]
     description = (
         f"{speaker_text} discusses a documented parliamentary issue in Nepal.\n"
