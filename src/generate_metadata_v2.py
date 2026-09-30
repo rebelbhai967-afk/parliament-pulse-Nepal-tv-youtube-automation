@@ -133,7 +133,7 @@ def build(story, kind, index, summaries):
         "tags": tags, "hashtags": hashtags, "category_id": "25", "privacy": "private",
         "speakers": speakers, "houses": houses, "story_text": issue,
         "speaker_attribution": attribution,
-        "topic_summary": summary, "community_prompt": community_prompt,
+        "topic_summary": safe_topic or topic_label, "community_prompt": community_prompt,
         "hook": hook, "hook_strategy": story.get("hook_strategy", "strongest_available"),
         "duration": story.get("duration"), "kind": kind
     }
