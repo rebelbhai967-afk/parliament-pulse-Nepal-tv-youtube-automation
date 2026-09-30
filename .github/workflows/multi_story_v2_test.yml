@@ -65,8 +65,8 @@ jobs:
           print("Named speakers by House:", named_by_house)
           if len(named) < 4:
               raise RuntimeError(f"Need at least 4 verified named-speaker source videos for the requested 2 Long + 2 Short build; found {len(named)}.")
-          if named_by_house.get("National Assembly",0) < 2 or named_by_house.get("House of Representatives",0) < 2:
-              raise RuntimeError(f"Need at least 2 verified named-speaker sources from each House; found {named_by_house}.")
+          if named_by_house.get("National Assembly",0) < 1 or named_by_house.get("House of Representatives",0) < 1:
+              raise RuntimeError(f"Need at least 1 verified named-speaker source from each House; found {named_by_house}.")
           PY
 
       - name: Transcribe all candidate videos
@@ -143,8 +143,12 @@ jobs:
           shorts=d.get("short_stories",[])
           print("Long stories:",len(longs))
           print("Short stories:",len(shorts))
+          long_houses = {h for s in longs for h in (s.get("houses") or []) if h}
+          print("Long Houses:", sorted(long_houses))
+          if len(long_houses) < 2:
+              raise RuntimeError(f"Long stories must represent both Parliament Houses; found {sorted(long_houses)}")
           for i,s in enumerate(longs,1):
-              print("LONG",i,s.get("duration"),s.get("speakers"),s.get("hook_strategy"))
+              print("LONG",i,s.get("duration"),s.get("speakers"),s.get("houses"),s.get("hook_strategy"))
               if not 181 <= float(s.get("duration",0)) <= 600:
                   raise RuntimeError(f"Long duration rule failed: {i}")
               if not (s.get("opening_hook") or {}).get("text"):
