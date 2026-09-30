@@ -94,8 +94,38 @@ def english_keywords(text):
     words = re.findall(r"[A-Za-z][A-Za-z'-]{2,}", text)
     return list(dict.fromkeys(words))
 
+def source_topic_label(title):
+    title = clean(title)
+    if not title:
+        return ""
+    tail = title.split("/")[-1].strip()
+    lowered = tail.lower()
+    if any(x in lowered for x in ("national anthem", "sammananiye sabhamukh", "सम्माननीय अध्यक्ष")):
+        return "Parliamentary Session"
+    if any(x in lowered for x in ("zero hour", "शून्य समय")):
+        return "Zero Hour Discussion"
+    if any(x in lowered for x in ("pratibedan", "प्रतिवेदन", "annual report", "वार्षिक प्रतिवेदन")):
+        return "Parliamentary Report"
+    if any(x in lowered for x in ("prastav", "proposal", "प्रस्ताव")):
+        return "Parliamentary Proposal"
+    if any(x in lowered for x in ("bidhyak", "bill", "विधेयक")):
+        return "Bill and Legislation"
+    if len(tail) > 120:
+        tail = tail[:120]
+    return neutralize_loaded_terms(tail)
+
+def safe_speaker(value):
+    value = clean(value)
+    if not value:
+        return ""
+    lowered = value.lower()
+    bad = ("zero hour", "special hour", "jawaf", "prastav", "pratibedan", "bidhyak",
+           "sammananiye", "national anthem", "प्रतिवेदन", "सभासमक्ष", "प्रस्ताव", "विधेयक",
+           "प्रस्तुत", "पेस", "अध्यक्ष", "शून्य समय")
+    return "" if any(x in lowered for x in bad) else value
+
 def build(story, kind, index, summaries):
-    speakers = [clean(x) for x in story.get("speakers", []) if clean(x)]
+    speakers = [safe_speaker(x) for x in story.get("speakers", []) if safe_speaker(x)]
     houses = story.get("houses", [])
     issue = clean(story.get("topic_text", ""))[:220]
     speaker_text = " & ".join(speakers[:4]) if speakers else "Nepal Parliament"
@@ -112,18 +142,18 @@ def build(story, kind, index, summaries):
         re.sub(r"[^A-Za-z0-9 ,&()\-]", "", usable_english_summary(summary)).strip()
     )
     topic_label = fallback_topic(issue)
+    source_label = source_topic_label(story.get("source_title", ""))
+    if not safe_topic and source_label:
+        topic_label = source_label
     title_topic = safe_title_topic(safe_topic, topic_label)
     hook = story.get("opening_hook") or {}
     hook_text = clean(hook.get("text"))
     if kind == "long":
-        title = f"{speaker_text} | {topic_label}"
-        if safe_topic:
-            title = f"{speaker_text} | {title_topic[:55]}"
+        title = f"{speaker_text} | {title_topic[:65]}"
+        if safe_topic else f"{speaker_text} | {topic_label}"
     else:
-        speaker = speakers[0] if speakers else clean(story.get("speaker"))
-        title = f"{speaker} | {topic_label}" if speaker else f"{topic_label} | Nepal Parliament"
-        if safe_topic:
-            title = f"{speaker} | {title_topic[:60]}"
+        speaker = speakers[0] if speakers else safe_speaker(story.get("speaker"))
+        title = f"{speaker} | {title_topic[:60]}" if speaker else f"{topic_label} | {houses[0] if houses else 'Nepal Parliament'}"
 
     title = re.sub(r"\s+", " ", title).strip()
     # Final safety pass: no loaded/clickbait wording may enter a title
@@ -140,7 +170,7 @@ def build(story, kind, index, summaries):
         f"Speaker attribution: {attribution}\n\n"
         f"House: {', '.join(houses) if houses else 'Federal Parliament'}\n"
         f"Format: {'multi-speaker parliamentary discussion' if kind == 'long' else 'short parliamentary highlight'}\n"
-        f"Opening approach: {hook_text or 'strongest verified parliamentary moment'}\n\n"
+        "Opening approach: transcript-grounded parliamentary moment.\n\n"
         f"Topic context: {safe_topic or topic_label}\n\n"
         "Source: Official Parliament of Nepal video archive. "
         "This edited clip removes non-substantive portions while preserving the meaning of the parliamentary statements. "
@@ -160,6 +190,7 @@ def build(story, kind, index, summaries):
         "index": index, "title": title, "description": description,
         "tags": tags, "hashtags": hashtags, "category_id": "25", "privacy": "private",
         "speakers": speakers, "houses": houses, "story_text": issue,
+        "source_title": story.get("source_title", ""),
         "speaker_attribution": attribution,
         "topic_summary": safe_topic or topic_label, "community_prompt": community_prompt,
         "hook": hook, "hook_strategy": story.get("hook_strategy", "strongest_available"),
