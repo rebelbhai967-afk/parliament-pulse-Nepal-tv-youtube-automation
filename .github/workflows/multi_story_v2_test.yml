@@ -31,7 +31,7 @@ jobs:
 
       - name: Compile editorial pipeline
         run: |
-          python -m py_compile src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/render_stories.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py src/normalize_selection.py
+          python -m py_compile src/download_multi.py src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/render_stories.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py src/normalize_selection.py
 
       - name: Discover both Parliament Houses
         run: |
@@ -40,7 +40,7 @@ jobs:
 
       - name: Download latest collections from both Houses
         run: |
-          python src/download_multi.py data/parliament_collections.json data/videos 16 24
+          python src/download_multi.py data/parliament_collections.json data/videos 12 18
 
       - name: Verify multi-source download
         run: |
