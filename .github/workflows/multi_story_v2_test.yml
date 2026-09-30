@@ -63,7 +63,7 @@ jobs:
           for x in named:
               named_by_house[x.get("house")]=named_by_house.get(x.get("house"),0)+1
           print("Named speakers by House:", named_by_house)
-          print("Speaker attribution is optional; no member name will be inferred from procedural page labels.")
+          print("Speaker attribution is optional: current Parliament video pages often expose procedural labels such as Zero Hour/Jawaf rather than member names. No member name will be inferred.")
           PY
 
       - name: Transcribe all candidate videos
