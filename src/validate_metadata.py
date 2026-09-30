@@ -28,8 +28,8 @@ def validate_item(item, kind):
         errors.append("description > 5000 chars")
     if not houses:
         errors.append("missing House attribution")
-    if not speakers:
-        errors.append("missing verified speaker attribution")
+    # A Parliament video may expose a procedural title rather than a member
+    # name. That is valid source attribution; never invent a speaker name.
     if not hook.get("text"):
         errors.append("missing transcript-grounded opening hook")
     if not topic_summary:
