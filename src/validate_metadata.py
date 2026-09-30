@@ -5,8 +5,8 @@ from pathlib import Path
 
 BANNED_TITLE_PHRASES = [
     "shocking", "unbelievable", "destroyed", "exposed", "traitor",
-    "disgrace", "scandal", "you won't believe", "breaking!!!",
-    "must watch", "viral", "sensational", "historic!!!"
+    "disgrace", "scandal", "you won't believe", "breaking", "exposed",
+    "must watch", "viral", "sensational", "historic"
 ]
 
 def contains_banned_phrase(text):
@@ -28,6 +28,8 @@ def validate_item(item, kind):
         errors.append("title > 100 chars")
     if not description:
         errors.append("missing description")
+    if "official parliament of nepal" not in description.lower():
+        errors.append("missing official Parliament of Nepal source attribution")
     if len(description) > 5000:
         errors.append("description > 5000 chars")
     if not houses:
@@ -48,10 +50,11 @@ def validate_item(item, kind):
         if re.search(rf"(?<![a-z]){re.escape(phrase)}(?![a-z])", lowered_title):
             errors.append(f"loaded/clickbait title phrase: {phrase}")
 
-    # Topic summaries are also user-facing metadata, so they must remain neutral.
-    for phrase in BANNED_TITLE_PHRASES:
-        if re.search(rf"(?<![a-z]){re.escape(phrase)}(?![a-z])", topic_summary.lower()):
-            errors.append(f"loaded/clickbait topic phrase: {phrase}")
+    # Topic summaries and descriptions are user-facing metadata too.
+    for field_name, field_value in (("topic summary", topic_summary), ("description", description)):
+        for phrase in BANNED_TITLE_PHRASES:
+            if re.search(rf"(?<![a-z]){re.escape(phrase)}(?![a-z])", field_value.lower()):
+                errors.append(f"loaded/clickbait {field_name} phrase: {phrase}")
 
     if re.search(r"!{2,}|\?{2,}|\bOMG\b|\bSHOCKING\b", title, re.I):
         errors.append("sensational punctuation/language")
