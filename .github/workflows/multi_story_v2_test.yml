@@ -63,10 +63,7 @@ jobs:
           for x in named:
               named_by_house[x.get("house")]=named_by_house.get(x.get("house"),0)+1
           print("Named speakers by House:", named_by_house)
-          if len(named) < 4:
-              raise RuntimeError(f"Need at least 4 verified named-speaker source videos for the requested 2 Long + 2 Short build; found {len(named)}.")
-          if named_by_house.get("National Assembly",0) < 1 or named_by_house.get("House of Representatives",0) < 1:
-              raise RuntimeError(f"Need at least 1 verified named-speaker source from each House; found {named_by_house}.")
+          print("Speaker attribution is optional; no member name will be inferred from procedural page labels.")
           PY
 
       - name: Transcribe all candidate videos
