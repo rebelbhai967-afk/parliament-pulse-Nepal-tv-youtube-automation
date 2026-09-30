@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 
-def run_upload(video, item, client_secret, token, privacy):
+def run_upload(video, item, client_secret, token, privacy, publish_at):
     command = [
         sys.executable, "src/youtube_upload.py", str(video),
         "--title", str(item.get("title", "")),
@@ -15,10 +15,12 @@ def run_upload(video, item, client_secret, token, privacy):
         "--client-secret", client_secret,
         "--token", token,
     ]
+    if publish_at:
+        command += ["--publish-at", publish_at]
     subprocess.run(command, check=True)
 
 
-def main(masters, metadata_dir, client_secret, token, privacy, kind):
+def main(masters, metadata_dir, client_secret, token, privacy, kind, publish_at):
     masters = Path(masters)
     metadata_dir = Path(metadata_dir)
     items = json.loads((metadata_dir / f"{kind}_metadata.json").read_text(encoding="utf-8"))
@@ -31,7 +33,7 @@ def main(masters, metadata_dir, client_secret, token, privacy, kind):
             raise FileNotFoundError(video)
 
         print(f"\n=== YouTube {kind.upper()} {index:02d} ===")
-        run_upload(video, item, client_secret, token, privacy)
+        run_upload(video, item, client_secret, token, privacy, publish_at)
         results.append({"index": index, "video": str(video), "status": "uploaded"})
 
     (masters / f"youtube_{kind}_upload_report.json").write_text(
@@ -48,5 +50,6 @@ if __name__ == "__main__":
     parser.add_argument("--token", default="token.json")
     parser.add_argument("--privacy", choices=["private", "unlisted", "public"], default="private")
     parser.add_argument("--kind", choices=["long", "short"], required=True)
+    parser.add_argument("--publish-at", default="")
     args = parser.parse_args()
     main(args.masters, args.metadata_dir, args.client_secret, args.token, args.privacy, args.kind)
