@@ -41,8 +41,9 @@ PROCEDURAL_SPEAKER_TERMS = (
     "सम्माननीय अध्यक्ष", "अध्यक्ष", "national anthem", "zero hour",
     "special hour", "prastav", "bidhyak", "pratibedan", "sammananiye",
     "meeting", "session", "report", "presented", "proposal", "annual report",
-    "bill", "exposed", "shocking", "unbelievable", "breaking", "viral",
+    "exposed", "shocking", "unbelievable", "breaking", "viral",
 )
+
 
 def looks_like_person_name(text):
     text = clean(text)
@@ -53,12 +54,12 @@ def looks_like_person_name(text):
         return False
     if any(term in normalized for term in PROCEDURAL_SPEAKER_TERMS):
         return False
-    if any(term in normalized for term in ("प्रतिवेदन", "सभासमक्ष", "सभा समक्ष", "वार्षिक प्रतिवेदन", "आर्थिक वर्ष", "प्रस्ताव", "विधेयक", "प्रस्तुत", "पेस")):
-        return False
     tokens = [t for t in re.split(r"\s+", text) if t]
     if not 2 <= len(tokens) <= 6:
         return False
+    # A verified label should contain either Latin or Devanagari name tokens.
     return any(re.search(r"[A-Za-z]", t) for t in tokens) or any(re.search(r"[\u0900-\u097F]", t) for t in tokens)
+
 
 def normalize_speaker(text):
     text = clean(text)
@@ -69,29 +70,31 @@ def normalize_speaker(text):
         return ""
     return text.strip()
 
+
 def speaker_from_link(text):
-    return normalize_speaker(text)
+    # Collection link labels are frequently procedural/topic labels. Only accept
+    # a speaker when the label explicitly uses the archive's "video - Name" form.
+    value = clean(text)
+    if not re.match(r"^video\s*[-–:]\s*", value, re.I):
+        return ""
+    return normalize_speaker(value)
+
 
 def speaker_from_page_title(title):
-    """Extract a likely member name only from a clearly name-like title component."""
+    # Do not infer a person name from an ordinary procedural page title.
+    # Only explicit honorific/member markers are accepted.
     title = clean(title)
     if not title:
         return ""
-    # Parliament pages often append a member after a procedural/topic label.
     parts = re.split(r"\s*(?:/|\||:|–|—)\s*", title)
-    candidates = list(reversed([clean(x) for x in parts if clean(x)]))
-    # Prefer components containing an honorific/member cue, then ordinary two-part names.
-    for part in candidates:
-        if re.search(r"\b(?:MP|Hon\.?|माननीय|मा\.?|सांसद)\b", part, re.I):
-            cleaned = re.sub(r"\b(?:MP|Hon\.?|माननीय|मा\.?|सांसद)\b", " ", part, flags=re.I)
-            candidate = normalize_speaker(cleaned)
+    for part in reversed([clean(x) for x in parts if clean(x)]):
+        if re.search(r"\b(?:MP|Hon\.?|Honorable|माननीय|मा\.?|सांसद)\b", part, re.I):
+            candidate = re.sub(r"\b(?:MP|Hon\.?|Honorable|माननीय|मा\.?|सांसद)\b", " ", part, flags=re.I)
+            candidate = normalize_speaker(candidate)
             if candidate:
                 return candidate
-    for part in candidates:
-        candidate = normalize_speaker(part)
-        if candidate and not is_procedural_label_text(candidate):
-            return candidate
     return ""
+
 
 def is_procedural_label_text(text):
     value = clean(text).lower()
@@ -140,10 +143,6 @@ def source_from_page(page_url, s):
     if soup.title:
         title_candidates.append(soup.title.get_text(" ", strip=True))
 
-    # The Parliament archive often exposes member names as child labels such as
-    # "video - Hon. Name" while the page title itself is a session/topic label.
-    # Capture those explicit labels rather than guessing a speaker from the
-    # procedural title.
     for node in soup.find_all(string=re.compile(r"^\s*video\s*-\s*", re.I)):
         hint = clean(node)
         if hint:
@@ -177,19 +176,7 @@ def download(url, path, s):
 def main(collections_json, output_dir, max_collections=16, max_videos=24):
     data = json.loads(Path(collections_json).read_text(encoding="utf-8"))
     collections = data.get("collections", [])
-    selected = []
-    seen_sources = set()
-    for item in collections:
-        if item["source_id"] not in seen_sources or len(selected) < max_collections:
-            selected.append(item)
-            seen_sources.add(item["source_id"])
-        if len(selected) >= max_collections:
-            break
 
-    # Prefer two latest collections per House.
-    # Respect the requested collection budget and spread it across both Houses.
-    # The previous implementation hard-coded only two collections per House,
-    # which could leave the pipeline with too few distinct videos for 12+12.
     selected = []
     counts = {}
     seen_collection = set()
@@ -206,8 +193,6 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
         if len(selected) >= max_collections:
             break
 
-    # If one House has fewer available collections, fill remaining slots from
-    # the other House instead of silently stopping early.
     if len(selected) < max_collections:
         for item in collections:
             key = (item.get("source_id"), item.get("url"))
@@ -226,8 +211,6 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
     index = 1
     page_candidates = []
 
-    # Inspect all selected collection pages first. Then prioritize verified
-    # person-name labels, while keeping the actual downloaded source count low.
     for collection in selected:
         pages = video_pages(collection, s)
         print(f"{collection['house']}: {len(pages)} videos in {collection['title']}")
@@ -235,10 +218,6 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
             if page["page"] in seen_pages:
                 continue
             seen_pages.add(page["page"])
-            speaker = page.get("speaker") or speaker_from_page_title(page.get("link_label", ""))
-            # Resolve the actual video page title before ranking candidates. Parliament
-            # collection labels are often procedural (e.g. "Zero Hour"), while the
-            # individual video page title can contain the member's real name.
             page_source = None
             page_title = ""
             page_speaker = ""
@@ -246,11 +225,12 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
                 page_source, page_title, page_speaker = source_from_page(page["page"], s)
             except Exception as exc:
                 print("Page metadata failed:", page["page"], exc)
-            speaker = speaker or speaker_from_page_title(page_title)
+            # Never promote the ordinary page title into a speaker name.
+            speaker = page.get("speaker") or page_speaker
             page_candidates.append({
                 "collection": collection,
                 "page": page,
-                "speaker": speaker or page_speaker,
+                "speaker": speaker,
                 "page_title": page_title,
                 "source": page_source,
             })
@@ -258,8 +238,6 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
     named = [x for x in page_candidates if x["speaker"]]
     unnamed = [x for x in page_candidates if not x["speaker"]]
     ordered = []
-
-    # Round-robin Houses for named clips first, so both Houses remain represented.
     houses = []
     for item in page_candidates:
         house = item["collection"]["house"]
@@ -287,14 +265,14 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
         try:
             source = item.get("source")
             page_title = item.get("page_title", "")
-            page_speaker = item.get("speaker", "")
+            speaker = item.get("speaker", "")
             if not source:
                 source, page_title, page_speaker = source_from_page(page["page"], s)
+                speaker = speaker or page_speaker
             if not source:
                 print("Skipping: no video source", page["page"])
                 continue
             path = out / f"video_{index:03d}.mp4"
-            speaker = item["speaker"] or page_speaker or speaker_from_page_title(page_title)
             print(f"Downloading {index}: {speaker or '[unattributed]'} -> {path.name}")
             download(source, path, s)
             records.append({
@@ -313,8 +291,8 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
             print("Download failed:", page["page"], exc)
 
     (out / "videos.json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-    named = sum(1 for item in records if item.get("speaker"))
-    print(f"Downloaded {len(records)} Parliament videos from both Houses; speaker-attributed: {named}.")
+    named_count = sum(1 for item in records if item.get("speaker"))
+    print(f"Downloaded {len(records)} Parliament videos from both Houses; speaker-attributed: {named_count}.")
     if len(records) < 4:
         raise RuntimeError("Too few Parliament videos downloaded for multi-story selection.")
 
