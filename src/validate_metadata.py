@@ -3,9 +3,10 @@ import re
 import sys
 from pathlib import Path
 
-BANNED = [
+BANNED_TITLE_PHRASES = [
     "shocking", "unbelievable", "destroyed", "exposed", "traitor",
-    "disgrace", "scandal", "you won't believe", "breaking!!!"
+    "disgrace", "scandal", "you won't believe", "breaking!!!",
+    "must watch", "viral", "sensational", "historic!!!"
 ]
 
 def validate_item(item, kind):
@@ -14,6 +15,8 @@ def validate_item(item, kind):
     description = str(item.get("description", "")).strip()
     speakers = item.get("speakers") or []
     hook = item.get("hook") or {}
+    topic_summary = str(item.get("topic_summary", "")).strip()
+    houses = item.get("houses") or []
 
     if not title:
         errors.append("missing title")
@@ -23,19 +26,21 @@ def validate_item(item, kind):
         errors.append("missing description")
     if len(description) > 5000:
         errors.append("description > 5000 chars")
+    if not houses:
+        errors.append("missing House attribution")
     if not speakers:
-        # Official source pages do not always expose a member name. Never
-        # invent one; editorial_gate.py will surface this as a review warning.
-        pass
+        errors.append("missing verified speaker attribution")
     if not hook.get("text"):
         errors.append("missing transcript-grounded opening hook")
+    if not topic_summary and "Parliamentary Discussion in Nepal" in title:
+        errors.append("missing usable topic summary")
     if hook.get("strategy") not in {"question_hook", "public_issue_hook", "strong_quote_hook", "strongest_available"}:
         errors.append("invalid hook strategy")
 
-    lowered = (title + " " + description).lower()
-    for phrase in BANNED:
-        if phrase in lowered:
-            errors.append(f"loaded/clickbait phrase: {phrase}")
+    lowered_title = title.lower()
+    for phrase in BANNED_TITLE_PHRASES:
+        if phrase in lowered_title:
+            errors.append(f"loaded/clickbait title phrase: {phrase}")
 
     if re.search(r"!{2,}|\?{2,}|\bOMG\b|\bSHOCKING\b", title, re.I):
         errors.append("sensational punctuation/language")
