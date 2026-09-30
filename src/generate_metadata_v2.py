@@ -135,7 +135,10 @@ def build(story, kind, index, summaries):
     speaker_text = " & ".join(speakers[:4]) if speakers else "Nepal Parliament"
     attribution = "Verified speaker attribution from the official Parliament video page." if speakers else "Speaker name was not provided on the official source page; no speaker name is inferred."
 
-    source_videos = [p.get("video", "") for p in story.get("pieces", []) if p.get("video")]
+    pieces = story.get("pieces", [])
+    source_videos = [p.get("video", "") for p in pieces if p.get("video")]
+    source_page = story.get("source_page") or next((p.get("source_page", "") for p in pieces if p.get("source_page")), "")
+    source_title = story.get("source_title") or next((p.get("page_title", "") for p in pieces if p.get("page_title")), "")
     summary = ""
     for video in source_videos:
         summary = clean(summaries.get(Path(video).stem, ""))
@@ -146,7 +149,7 @@ def build(story, kind, index, summaries):
         re.sub(r"[^A-Za-z0-9 ,&()\-]", "", usable_english_summary(summary)).strip()
     )
     topic_label = fallback_topic(issue)
-    source_label = source_topic_label(story.get("source_title", ""))
+    source_label = source_topic_label(source_title)
     if not safe_topic and source_label:
         topic_label = source_label
     topic_label = neutralize_loaded_terms(topic_label)
@@ -220,8 +223,8 @@ def build(story, kind, index, summaries):
         "index": index, "title": title, "description": description,
         "tags": tags, "hashtags": hashtags, "category_id": "25", "privacy": "private",
         "speakers": speakers, "houses": houses, "story_text": issue,
-        "source_title": story.get("source_title", ""),
-        "source_page": story.get("source_page") or (source_videos[0] if source_videos else ""),
+        "source_title": source_title,
+        "source_page": source_page,
         "speaker_attribution": attribution,
         "topic_summary": safe_topic or topic_label, "community_prompt": community_prompt,
         "hook": hook, "hook_strategy": story.get("hook_strategy", "strongest_available"),
