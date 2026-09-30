@@ -78,7 +78,7 @@ def speaker_from_page_title(title):
     if not title:
         return ""
     # Parliament pages often append a member after a procedural/topic label.
-    parts = re.split(r"\s*(?:/|\\||:|–|—)\s*", title)
+    parts = re.split(r"\s*(?:/|\||:|–|—)\s*", title)
     candidates = list(reversed([clean(x) for x in parts if clean(x)]))
     # Prefer components containing an honorific/member cue, then ordinary two-part names.
     for part in candidates:
