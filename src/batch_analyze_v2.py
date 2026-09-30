@@ -234,13 +234,36 @@ def main(input_dir, output_file):
             long_candidates.append(w)
     long_candidates.sort(key=lambda x: x["score"], reverse=True)
 
-    # Keep a diverse candidate pool: no single source video dominates.
+    # Keep a genuinely diverse candidate pool. The old top-score pool could
+    # be dominated by the same few videos, leaving no unused source material
+    # for Shorts after the Long selection. Reserve candidates across sources.
     pool, per_video = [], {}
     for c in candidates:
-        if per_video.get(c["video"], 0) >= 4:
+        if per_video.get(c["video"], 0) >= 3:
             continue
-        pool.append(c); per_video[c["video"]] = per_video.get(c["video"], 0) + 1
-        if len(pool) >= 80:
+        pool.append(c)
+        per_video[c["video"]] = per_video.get(c["video"], 0) + 1
+        if len(pool) >= 120:
+            break
+
+    # Build a second, source-diverse pool specifically for Shorts. Do not let
+    # procedural page titles alone discard usable transcript windows: the
+    # transcript itself is the editorial evidence. We only reject very short
+    # or very low-information transcript windows.
+    short_source_pool, short_per_video = [], {}
+    for c in candidates:
+        if c["video"] in used:
+            continue
+        text_value = clean(c.get("text", ""))
+        if len(text_value) < 80:
+            continue
+        if c.get("avg_logprob") is not None and c["avg_logprob"] < -0.95:
+            continue
+        if short_per_video.get(c["video"], 0) >= 2:
+            continue
+        short_source_pool.append(c)
+        short_per_video[c["video"]] = short_per_video.get(c["video"], 0) + 1
+        if len(short_source_pool) >= 120:
             break
 
     long_stories = []
@@ -356,20 +379,16 @@ def main(input_dir, output_file):
     short_stories = []
     short_used = set()
     short_pool = sorted(
-        pool,
+        short_source_pool,
         key=lambda c: (
-            0 if is_procedural_label(c.get("page_title", "")) else 1,
             1 if clean(c.get("speaker")) else 0,
             c.get("score", 0),
+            len(clean(c.get("text", ""))),
         ),
         reverse=True,
     )
     for c in short_pool:
         if c["video"] in used or c["video"] in short_used:
-            continue
-        if is_procedural_label(c.get("page_title", "")):
-            # Never use a purely procedural/session label as a Short when a
-            # substantive candidate exists elsewhere in the pool.
             continue
         if c["duration"] <= 89:
             piece = dict(c)
