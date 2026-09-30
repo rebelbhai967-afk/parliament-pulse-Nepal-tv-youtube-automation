@@ -1,9 +1,8 @@
 name: Parliament Pulse Nepal Production
 
+# Production publishing is intentionally manual until the V2 test pipeline
+# passes its editorial/visual review on a fresh source set.
 on:
-  push:
-    paths:
-      - ".github/workflows/production.yml"
   workflow_dispatch:
     inputs:
       slot:
@@ -14,11 +13,6 @@ on:
         options:
           - morning
           - evening
-  schedule:
-    - cron: "30 0 * * *"
-      timezone: "Asia/Kathmandu"
-    - cron: "0 12 * * *"
-      timezone: "Asia/Kathmandu"
 
 concurrency:
   group: parliament-pulse-production
