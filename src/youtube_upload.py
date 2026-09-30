@@ -101,6 +101,7 @@ def upload_video(
     category_id=DEFAULT_CATEGORY_ID,
     privacy_status=DEFAULT_PRIVACY,
     made_for_kids=False,
+    publish_at=None,
 ):
     """
     Upload one video to YouTube.
@@ -118,12 +119,17 @@ def upload_video(
             "title": title[:100],
             "description": description[:5000],
             "categoryId": str(category_id),
+            "defaultLanguage": "en",
         },
         "status": {
             "privacyStatus": privacy_status,
             "selfDeclaredMadeForKids": made_for_kids,
         },
     }
+    if publish_at:
+        if privacy_status != "private":
+            raise ValueError("publish_at requires private privacyStatus")
+        body["status"]["publishAt"] = publish_at
 
     if tags:
         body["snippet"]["tags"] = tags[:500]
@@ -237,6 +243,12 @@ def main():
     )
 
     parser.add_argument(
+        "--publish-at",
+        default="",
+        help="ISO-8601 publish time; video remains private until that time",
+    )
+
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Check inputs without uploading",
@@ -301,6 +313,7 @@ def main():
             tags=tags,
             category_id=args.category,
             privacy_status=args.privacy,
+            publish_at=args.publish_at or None,
         )
 
         print()
