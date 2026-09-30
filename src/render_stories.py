@@ -18,7 +18,15 @@ def render_segment(piece, subtitle_dir, output, kind, start, duration):
     if kind == "short":
         # Fill the vertical frame instead of letterboxing a 16:9 Parliament
         # recording with large black bars. Keep the central speaker area.
-        filters += ["scale=-2:1920:force_original_aspect_ratio=increase", "crop=1080:1920:(iw-1080)/2:0"]
+        # Preserve the full 16:9 Parliament frame in the foreground and use a
+        # blurred, cropped copy behind it instead of large black bars or an
+        # aggressive center crop that can cut off the speaker.
+        filters += [
+            "split=2[bg][fg]",
+            "[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=18:8[bg]",
+            "[fg]scale=1080:-2[fg]",
+            "[bg][fg]overlay=0:(H-h)/2"
+        ]
     else:
         filters += ["scale=1920:1080:force_original_aspect_ratio=decrease", "pad=1920:1080:(ow-iw)/2:(oh-ih)/2"]
     if srt.exists():
