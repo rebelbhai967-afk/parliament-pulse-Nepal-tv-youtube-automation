@@ -156,6 +156,7 @@ def build(story, kind, index, summaries):
         speaker = speakers[0] if speakers else safe_speaker(story.get("speaker"))
         title = f"{speaker} | {title_topic[:55]} | {house_text}" if speaker else f"{title_topic[:55]} | {house_text}"
 
+    title = neutralize_loaded_terms(title)
     title = re.sub(r"\s+", " ", title).strip()
     # Final safety pass: no loaded/clickbait wording may enter a title
     # through a source label, speaker field, or translated summary.
@@ -165,6 +166,7 @@ def build(story, kind, index, summaries):
         title = f"Parliamentary Discussion | {topic_label}"
     if contains_banned(title):
         title = "Parliamentary Discussion | Nepal"
+    title = neutralize_loaded_terms(title)
     title = re.sub(r"\s+", " ", title).strip()[:100]
     description = (
         f"{speaker_text} discusses a documented parliamentary issue in Nepal.\n"
