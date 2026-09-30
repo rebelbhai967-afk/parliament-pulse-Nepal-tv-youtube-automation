@@ -37,7 +37,7 @@ def validate_item(item, kind):
     source_page = str(item.get("source_page", "")).strip()
     if not source_page:
         errors.append("missing official Parliament source page")
-    elif not re.match(r"^https://(?:na|hr)\\.parliament\\.gov\\.np/(?:np|en)/video/", source_page):
+    elif not re.match(r"^https://(?:na|hr)\.parliament\.gov\.np/(?:np|en)/video/", source_page):
         errors.append("invalid official Parliament source page")
     # A Parliament video may expose a procedural title rather than a member
     # name. That is valid source attribution; never invent a speaker name.
