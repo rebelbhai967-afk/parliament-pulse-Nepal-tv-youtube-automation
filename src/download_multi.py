@@ -104,9 +104,13 @@ def speaker_from_page_title(title):
             candidate = normalize_speaker(candidate)
             if candidate:
                 return candidate
-        # Do not infer a person from an arbitrary page-title tail. Only an
-        # explicit member-name marker (MP/Hon./माननीय/सांसद) is strong enough
-        # for verified attribution; everything else remains unattributed.
+        # Some official Parliament pages expose a member name only after
+        # the final "/" without an explicit MP/Hon./सांसद marker. Accept that
+        # final component only when the existing name/procedural filters classify
+        # it as a plausible person name. Never promote procedural labels.
+        candidate = normalize_speaker(part)
+        if candidate:
+            return candidate
     return ""
 
 
