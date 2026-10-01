@@ -54,7 +54,7 @@ jobs:
 
       - name: Download latest collections from both Houses
         run: |
-          python src/download_multi.py data/parliament_collections.json data/videos 4 24
+          python src/download_multi.py data/parliament_collections.json data/videos 4 12
 
       - name: Verify multi-source download
         run: |
@@ -75,8 +75,8 @@ jobs:
               if house:
                   house_counts[house] = house_counts.get(house, 0) + 1
           print("Videos by House:", house_counts)
-          if any(house_counts.get(h, 0) < 2 for h in ("House of Representatives", "National Assembly")):
-              raise RuntimeError(f"Need at least 2 source videos from each Parliament House; found {house_counts}")
+          if any(house_counts.get(h, 0) < 3 for h in ("House of Representatives", "National Assembly")):
+              raise RuntimeError(f"Need at least 3 source videos from each Parliament House; found {house_counts}")
           if len({x.get("page") for x in items}) != len(items):
               raise RuntimeError("Duplicate Parliament source pages detected.")
           named=[x for x in items if x.get("speaker")]
