@@ -18,6 +18,20 @@ def contains_banned(text):
     lowered = clean(text).lower()
     return any(re.search(rf"(?<![a-z]){re.escape(term)}(?![a-z])", lowered) for term in TITLE_BANNED)
 
+def scrub_banned_tokens(text):
+    """Deterministically neutralize loaded/clickbait tokens in publishable text."""
+    value = clean(text)
+    replacements = {
+        "exposed": "discussed", "shocking": "notable", "unbelievable": "reported",
+        "destroyed": "affected", "traitor": "political figure", "disgrace": "controversy",
+        "scandal": "issue", "you won't believe": "reported", "breaking": "latest",
+        "must watch": "discussion", "viral": "widely discussed", "sensational": "notable",
+        "historic": "significant",
+    }
+    for old, new in replacements.items():
+        value = re.sub(rf"(?<![A-Za-z]){re.escape(old)}(?![A-Za-z])", new, value, flags=re.I)
+    return re.sub(r"\\s+", " ", value).strip()
+
 def safe_title_topic(summary, fallback):
     summary = clean(summary)
     if not summary or contains_banned(summary):
@@ -193,10 +207,11 @@ def build(story, kind, index, summaries):
     # Final deterministic scrub. This runs after every fallback so a source-page
     # label, translated summary, or other metadata field cannot leak a loaded
     # token such as "exposed" into the publishable title.
-    title = neutralize_loaded_terms(title)
+    title = scrub_banned_tokens(neutralize_loaded_terms(title))
     if contains_banned(title):
         title = "Parliamentary Discussion | Nepal"
     title = re.sub(r"\s+", " ", title).strip(" |:-")[:100]
+    title = scrub_banned_tokens(title)
     if contains_banned(title):
         title = "Parliamentary Discussion | Nepal"
     description = (
@@ -212,7 +227,7 @@ def build(story, kind, index, summaries):
     )
     # Final metadata safety pass: translated summaries or source labels must never
     # leak loaded/clickbait wording into publishable descriptions.
-    description = neutralize_loaded_terms(description)
+    description = scrub_banned_tokens(neutralize_loaded_terms(description))
     if contains_banned(description):
         description = " ".join(
             part for part in description.split(" ")
