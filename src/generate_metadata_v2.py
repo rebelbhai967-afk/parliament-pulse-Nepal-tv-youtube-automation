@@ -117,12 +117,15 @@ def final_safe_text(text):
         "must watch": "discussion", "viral": "widely discussed", "sensational": "notable",
         "historic": "significant",
     }
-    for banned, replacement in replacements.items():
-        value = re.sub(rf"(?i)(?<![A-Za-z]){re.escape(banned)}(?![A-Za-z])", replacement, value)
-    # Last-resort removal guarantees the validator can never receive a banned
-    # token from generated/source metadata.
+    # Run several passes because translated text can contain punctuation or
+    # Unicode boundaries that can defeat a single regex pass.
+    for _ in range(3):
+        for banned, replacement in replacements.items():
+            value = re.sub(rf"(?i)(?<![A-Za-z]){re.escape(banned)}(?![A-Za-z])", replacement, value)
     for banned in TITLE_BANNED:
         value = re.sub(rf"(?i)(?<![A-Za-z]){re.escape(banned)}(?![A-Za-z])", "", value)
+    for banned in TITLE_BANNED:
+        value = re.sub(rf"(?i)\b{re.escape(banned)}\b", "", value)
     return re.sub(r"\s+", " ", value).strip(" |:-")
 
 def english_keywords(text):
