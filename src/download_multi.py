@@ -81,8 +81,11 @@ def speaker_from_link(text):
 
 
 def speaker_from_page_title(title):
-    # Do not infer a person name from an ordinary procedural page title.
-    # Only explicit honorific/member markers are accepted.
+    # Official Parliament video pages sometimes expose the member name only
+    # in the final component of the page title, e.g.
+    # "House meeting / Ambika Devi Sangraula". Accept that final component
+    # only when it is clearly non-procedural; never promote labels such as
+    # "zero hour", "jawaf", "report", etc. to a speaker name.
     title = clean(title)
     if not title:
         return ""
@@ -91,6 +94,13 @@ def speaker_from_page_title(title):
         if re.search(r"\b(?:MP|Hon\.?|Honorable|माननीय|मा\.?|सांसद)\b", part, re.I):
             candidate = re.sub(r"\b(?:MP|Hon\.?|Honorable|माननीय|मा\.?|सांसद)\b", " ", part, flags=re.I)
             candidate = normalize_speaker(candidate)
+            if candidate:
+                return candidate
+        # The final archive component can itself be a member name.
+        # Restrict this fallback to 2–6 tokens and reject procedural labels.
+        tokens = [t for t in re.split(r"\s+", part) if t]
+        if 2 <= len(tokens) <= 6 and not is_procedural_label_text(part):
+            candidate = normalize_speaker(part)
             if candidate:
                 return candidate
     return ""
