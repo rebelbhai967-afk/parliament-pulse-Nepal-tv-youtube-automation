@@ -108,6 +108,23 @@ def usable_english_summary(text):
 def clean(s):
     return re.sub(r"\s+", " ", str(s or "")).strip()
 
+def final_safe_text(text):
+    value = clean(text)
+    replacements = {
+        "exposed": "discussed", "shocking": "notable", "unbelievable": "reported",
+        "destroyed": "affected", "traitor": "political figure", "disgrace": "controversy",
+        "scandal": "issue", "you won't believe": "reported", "breaking": "latest",
+        "must watch": "discussion", "viral": "widely discussed", "sensational": "notable",
+        "historic": "significant",
+    }
+    for banned, replacement in replacements.items():
+        value = re.sub(rf"(?i)(?<![A-Za-z]){re.escape(banned)}(?![A-Za-z])", replacement, value)
+    # Last-resort removal guarantees the validator can never receive a banned
+    # token from generated/source metadata.
+    for banned in TITLE_BANNED:
+        value = re.sub(rf"(?i)(?<![A-Za-z]){re.escape(banned)}(?![A-Za-z])", "", value)
+    return re.sub(r"\s+", " ", value).strip(" |:-")
+
 def english_keywords(text):
     words = re.findall(r"[A-Za-z][A-Za-z'-]{2,}", text)
     return list(dict.fromkeys(words))
@@ -256,10 +273,11 @@ def build(story, kind, index, summaries):
     community_prompt = prompts[(index - 1) % len(prompts)]
     description += f"\\n\\nCommunity note: {community_prompt}"
     # Final deterministic scrub after every field has been assembled.
-    title = neutralize_loaded_terms(title)
-    topic_label = neutralize_loaded_terms(topic_label)
-    safe_topic = neutralize_loaded_terms(safe_topic)
-    description = neutralize_loaded_terms(description)
+    title = final_safe_text(title)
+    topic_label = final_safe_text(topic_label)
+    safe_topic = final_safe_text(safe_topic)
+    description = final_safe_text(description)
+    hook_text = final_safe_text(hook_text)
     if contains_banned(title):
         title = "Parliamentary Discussion | Nepal"
     if contains_banned(description):
