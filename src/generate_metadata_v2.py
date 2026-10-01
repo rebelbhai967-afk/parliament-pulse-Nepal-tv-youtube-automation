@@ -197,6 +197,8 @@ def build(story, kind, index, summaries):
     if contains_banned(title):
         title = "Parliamentary Discussion | Nepal"
     title = re.sub(r"\s+", " ", title).strip(" |:-")[:100]
+    if contains_banned(title):
+        title = "Parliamentary Discussion | Nepal"
     description = (
         f"{speaker_text} discusses a documented parliamentary issue in Nepal.\n"
         f"Speaker attribution: {attribution}\n\n"
