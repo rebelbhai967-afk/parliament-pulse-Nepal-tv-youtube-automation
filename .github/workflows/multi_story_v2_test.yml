@@ -45,7 +45,7 @@ jobs:
 
       - name: Compile editorial pipeline
         run: |
-          python -m py_compile src/download_multi.py src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/render_stories.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py src/normalize_selection.py
+          python -m py_compile src/download_multi.py src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/batch_translate.py src/render_stories.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py src/normalize_selection.py
 
       - name: Discover both Parliament Houses
         run: |
