@@ -82,8 +82,8 @@ jobs:
               named_by_house[x.get("house")]=named_by_house.get(x.get("house"),0)+1
           print("Named speakers by House:", named_by_house)
           if len(named) < 2:
-              print("WARNING: fewer than 2 verified member-name source videos were exposed by the official pages; continuing with source-page and House attribution only.")
-          print("Speaker attribution is optional. Procedural Parliament page labels are never treated as member names.")
+              raise RuntimeError(f"Need at least 2 verified named-speaker source videos for the 2 Long + 2 Short editorial build; found {len(named)}. The downloader must extract official "video - Member Name" labels rather than procedural labels.")
+          print("Verified speaker attribution is available for the editorial build; procedural Parliament page labels are never treated as member names.")
           PY
 
       - name: Transcribe all candidate videos
