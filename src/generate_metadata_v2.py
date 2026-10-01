@@ -218,8 +218,12 @@ def build(story, kind, index, summaries):
             part for part in description.split(" ")
             if part.lower().strip(".,:;!?()[]{}\\\"'") not in TITLE_BANNED
         )
-    tags = BASE_TAGS + speakers[:4] + english_keywords(summary)[:18]
-    tags = list(dict.fromkeys([x for x in tags if x]))[:30]
+    # Tags are user-facing metadata too. Sanitize translated summary terms
+    # before they can leak loaded/clickbait wording into the tag set.
+    safe_tag_text = neutralize_loaded_terms(summary)
+    tags = BASE_TAGS + speakers[:4] + english_keywords(safe_tag_text)[:18]
+    tags = [neutralize_loaded_terms(x) for x in tags]
+    tags = list(dict.fromkeys([x for x in tags if x and not contains_banned(x)]))[:30]
     prompts = [
         "Which part of this parliamentary discussion would you like explained in a future video?",
         "What public issue raised here deserves more attention or context?",
