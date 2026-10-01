@@ -81,10 +81,9 @@ jobs:
           for x in named:
               named_by_house[x.get("house")]=named_by_house.get(x.get("house"),0)+1
           print("Named speakers by House:", named_by_house)
-          print("Named-speaker source videos:", len(named))
-          print("Speaker names are optional: if the official Parliament archive does not expose a member name for a video, the pipeline keeps the item unattributed and never invents a speaker name.")
+          print("Speaker names are optional. The official archive sometimes exposes member names only in page labels/attributes; extraction is best-effort.")
           if len(named) == 0:
-              print("WARNING: this source batch exposes no verified member names; editorial metadata will use issue/session attribution instead.")
+              print("WARNING: this source batch exposes no verified member names; the editorial pipeline will keep speaker attribution empty rather than invent a name.")
           PY
 
       - name: Transcribe all candidate videos
