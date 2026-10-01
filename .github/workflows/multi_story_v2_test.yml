@@ -54,7 +54,7 @@ jobs:
 
       - name: Download latest collections from both Houses
         run: |
-          python src/download_multi.py data/parliament_collections.json data/videos 4 12
+          python src/download_multi.py data/parliament_collections.json data/videos 4 24
 
       - name: Verify multi-source download
         run: |
