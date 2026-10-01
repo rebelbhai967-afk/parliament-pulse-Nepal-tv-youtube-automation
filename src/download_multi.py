@@ -173,9 +173,15 @@ def source_from_page(page_url, s):
     if soup.title:
         title_candidates.append(soup.title.get_text(" ", strip=True))
 
-    for node in soup.find_all(string=re.compile(r"^\s*video\s*-\s*", re.I)):
+    for node in soup.find_all(string=re.compile(r"video\s*[-–:]\s*", re.I)):
         hint = clean(node)
         if hint:
+            speaker_hints.append(hint)
+    for node in soup.find_all(string=True):
+        hint = clean(node)
+        if not hint or len(hint) > 120:
+            continue
+        if re.search(r"(?:video|सांसद|member|mp)\s*[-–:]", hint, re.I):
             speaker_hints.append(hint)
     for anchor in soup.find_all("a", href=True):
         for attr in ("aria-label", "title", "data-title", "data-name"):
@@ -196,6 +202,14 @@ def source_from_page(page_url, s):
     # labels such as "Zero Hour", "Bill Presented", or "Annual Report".
     if not speaker_hint:
         speaker_hint = speaker_from_page_title(title)
+    for meta in soup.find_all("meta"):
+        value = clean(meta.get("content"))
+        if not value or len(value) > 180:
+            continue
+        candidate = speaker_from_page_title(value)
+        if candidate:
+            speaker_hint = candidate
+            break
 
     for tag in soup.find_all(["video", "source", "iframe"]):
         for attr in ["src", "data-src", "data-video"]:
@@ -316,6 +330,7 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
             path = out / f"video_{index:03d}.mp4"
             print(f"Downloading {index}: {speaker or '[unattributed]'} -> {path.name}")
             download(source, path, s)
+            speaker = normalize_speaker(speaker)
             records.append({
                 "index": index,
                 "file": str(path),
@@ -325,7 +340,7 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
                 "source_id": collection["source_id"],
                 "collection_title": collection["title"],
                 "page_title": page_title,
-                "speaker": normalize_speaker(speaker),
+                "speaker": speaker,
             })
             index += 1
         except Exception as exc:
