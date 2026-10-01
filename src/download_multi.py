@@ -88,6 +88,25 @@ def speaker_from_link(text):
     return normalize_speaker(value)
 
 
+def speaker_hints_from_page_text(soup):
+    """Recover official 'video - Member Name' labels from rendered page text."""
+    hints = []
+    try:
+        text = soup.get_text(" ", strip=True)
+    except Exception:
+        text = ""
+    if text:
+        for match in re.finditer(
+            r"video\s*[-–:]\s*(.*?)(?=\s+video\s*[-–:]|$)",
+            text,
+            flags=re.I,
+        ):
+            value = clean(match.group(1))
+            if value and len(value) <= 100:
+                hints.append(value)
+    return hints
+
+
 def speaker_from_page_title(title):
     # Official Parliament video pages sometimes expose the member name only
     # in the final component of the page title, e.g.
@@ -144,6 +163,11 @@ def video_pages(collection, s):
             clean(link.get("data-title")),
             clean(link.get("data-name")),
         ]
+        parent = link.parent
+        if parent:
+            parent_text = clean(parent.get_text(" ", strip=True))
+            if parent_text and len(parent_text) <= 180:
+                label_parts.append(parent_text)
         label = next((x for x in label_parts if x), "")
         speaker = ""
         for candidate in label_parts:
@@ -188,6 +212,8 @@ def source_from_page(page_url, s):
             hint = clean(anchor.get(attr))
             if hint:
                 speaker_hints.append(hint)
+
+    speaker_hints.extend(speaker_hints_from_page_text(soup))
 
     title = next((x for x in title_candidates if clean(x)), "")
     speaker_hint = ""
