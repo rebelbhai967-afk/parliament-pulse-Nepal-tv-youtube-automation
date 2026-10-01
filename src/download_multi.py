@@ -133,10 +133,22 @@ def video_pages(collection, s):
         if full in seen:
             continue
         seen.add(full)
-        label = clean(link.get_text(" ", strip=True))
+        label_parts = [
+            clean(link.get_text(" ", strip=True)),
+            clean(link.get("aria-label")),
+            clean(link.get("title")),
+            clean(link.get("data-title")),
+            clean(link.get("data-name")),
+        ]
+        label = next((x for x in label_parts if x), "")
+        speaker = ""
+        for candidate in label_parts:
+            speaker = speaker_from_link(candidate)
+            if speaker:
+                break
         pages.append({
             "page": full,
-            "speaker": speaker_from_link(label),
+            "speaker": speaker,
             "link_label": label,
         })
     return pages
@@ -161,6 +173,11 @@ def source_from_page(page_url, s):
         hint = clean(node)
         if hint:
             speaker_hints.append(hint)
+    for anchor in soup.find_all("a", href=True):
+        for attr in ("aria-label", "title", "data-title", "data-name"):
+            hint = clean(anchor.get(attr))
+            if hint:
+                speaker_hints.append(hint)
 
     title = next((x for x in title_candidates if clean(x)), "")
     speaker_hint = ""
