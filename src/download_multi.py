@@ -33,6 +33,8 @@ GENERIC_SPEAKERS = {
     "annual report", "report presented", "proposal presented", "bill presented",
     "प्रतिवेदन", "सभासमक्ष", "सभा समक्ष", "वार्षिक प्रतिवेदन", "आर्थिक वर्ष",
     "प्रस्ताव प्रस्तुत", "विधेयक प्रस्तुत", "पेस", "प्रस्तुत", "बैठक", "अधिवेशन",
+    "बजेट", "विकास", "शिक्षा", "स्वास्थ्य", "रोजगारी", "सुरक्षा", "कानुन", "समिति",
+    "budget", "development", "education", "health", "employment", "security", "law", "committee",
 }
 
 PROCEDURAL_SPEAKER_TERMS = (
@@ -96,13 +98,9 @@ def speaker_from_page_title(title):
             candidate = normalize_speaker(candidate)
             if candidate:
                 return candidate
-        # The final archive component can itself be a member name.
-        # Restrict this fallback to 2–6 tokens and reject procedural labels.
-        tokens = [t for t in re.split(r"\s+", part) if t]
-        if 2 <= len(tokens) <= 6 and not is_procedural_label_text(part):
-            candidate = normalize_speaker(part)
-            if candidate:
-                return candidate
+        # Do not infer a person from an arbitrary page-title tail. Only an
+        # explicit member-name marker (MP/Hon./माननीय/सांसद) is strong enough
+        # for verified attribution; everything else remains unattributed.
     return ""
 
 
