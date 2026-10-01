@@ -190,6 +190,12 @@ def source_from_page(page_url, s):
         if candidate:
             speaker_hint = candidate
             break
+    # Some Parliament pages expose the member name only in the page title
+    # (for example, "House meeting / Dhurba Raj Rai"). Use that as a
+    # second verified source before giving up, but never promote procedural
+    # labels such as "Zero Hour", "Bill Presented", or "Annual Report".
+    if not speaker_hint:
+        speaker_hint = speaker_from_page_title(title)
 
     for tag in soup.find_all(["video", "source", "iframe"]):
         for attr in ["src", "data-src", "data-video"]:
