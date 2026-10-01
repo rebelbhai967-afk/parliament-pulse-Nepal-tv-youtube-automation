@@ -212,6 +212,15 @@ def build(story, kind, index, summaries):
         title = "Parliamentary Discussion | Nepal"
     title = re.sub(r"\s+", " ", title).strip(" |:-")[:100]
     title = scrub_banned_tokens(title)
+    # Final token-level replacement catches punctuation/Unicode boundary cases.
+    for banned, replacement in {
+        "exposed": "discussed", "shocking": "notable", "unbelievable": "reported",
+        "destroyed": "affected", "traitor": "political figure", "disgrace": "controversy",
+        "scandal": "issue", "breaking": "latest", "must watch": "discussion",
+        "viral": "widely discussed", "sensational": "notable", "historic": "significant",
+    }.items():
+        title = re.sub(r"(?i)" + re.escape(banned), replacement, title)
+    title = re.sub(r"\s+", " ", title).strip(" |:-")[:100]
     if contains_banned(title):
         title = "Parliamentary Discussion | Nepal"
     description = (
