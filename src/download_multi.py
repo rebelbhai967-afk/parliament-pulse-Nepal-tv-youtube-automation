@@ -31,6 +31,9 @@ GENERIC_SPEAKERS = {
     "bidhyak prastut", "सम्माननीय अध्यक्ष", "शून्य समय",
     "house of representatives", "national assembly", "federal parliament", "parliament",
     "annual report", "report presented", "proposal presented", "bill presented",
+    "parliamentary session", "parliamentary discussion", "house session",
+    "house meeting", "meeting of the house", "assembly meeting", "full video",
+    "discussion", "session", "meeting",
     "प्रतिवेदन", "सभासमक्ष", "सभा समक्ष", "वार्षिक प्रतिवेदन", "आर्थिक वर्ष",
     "प्रस्ताव प्रस्तुत", "विधेयक प्रस्तुत", "पेस", "प्रस्तुत", "बैठक", "अधिवेशन",
     "बजेट", "विकास", "शिक्षा", "स्वास्थ्य", "रोजगारी", "सुरक्षा", "कानुन", "समिति",
@@ -74,11 +77,14 @@ def normalize_speaker(text):
 
 
 def speaker_from_link(text):
-    # Collection link labels are frequently procedural/topic labels. Only accept
-    # a speaker when the label explicitly uses the archive's "video - Name" form.
+    # Official Parliament collection pages use labels such as "video - Gagan
+    # Kumar Thapa". Some pages also expose the member name without the "video -"
+    # prefix. Accept both forms, but run every label through the procedural/name
+    # safety filter so labels such as "Zero Hour" or "Bill Presented" are never
+    # promoted to speaker names.
     value = clean(text)
-    if not re.match(r"^video\s*[-–:]\s*", value, re.I):
-        return ""
+    if re.match(r"^video\s*[-–:]\s*", value, re.I):
+        value = re.sub(r"^video\s*[-–:]\s*", "", value, flags=re.I).strip()
     return normalize_speaker(value)
 
 
