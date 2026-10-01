@@ -2,6 +2,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 BANNED_TITLE_PHRASES = [
     "shocking", "unbelievable", "destroyed", "exposed", "traitor",
@@ -37,8 +38,15 @@ def validate_item(item, kind):
     source_page = str(item.get("source_page", "")).strip()
     if not source_page:
         errors.append("missing official Parliament source page")
-    elif not re.match(r"^https://(?:na|hr)\.parliament\.gov\.np/(?:np|en)/video/", source_page):
-        errors.append("invalid official Parliament source page")
+    else:
+        parsed = urlparse(source_page)
+        host = (parsed.hostname or "").lower()
+        path = parsed.path or ""
+        # Official archive links may vary slightly by language/router, so validate
+        # the trusted Parliament hosts plus the /video/ path instead of requiring
+        # one exact URL shape.
+        if parsed.scheme != "https" or host not in {"na.parliament.gov.np", "hr.parliament.gov.np"} or "/video/" not in path:
+            errors.append("invalid official Parliament source page")
     # A Parliament video may expose a procedural title rather than a member
     # name. That is valid source attribution; never invent a speaker name.
     if not hook.get("text"):
