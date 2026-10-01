@@ -342,40 +342,88 @@ def main(input_dir, output_file):
             used.add(video)
             break
 
-    # Fill any remaining Long slot from the strongest unused substantive window.
-    # Procedural page labels are never promoted into a Long story.
+    # If one House did not produce a standalone 181+ second window, build its
+    # Long story from two related transcript windows from that same House first.
+    # This prevents the second Long slot from silently becoming another story
+    # from the already-covered House.
+    required_houses = [h for h in ("House of Representatives", "National Assembly") if h]
+    covered_houses = {h for s in long_stories for h in (s.get("houses") or [])}
+    missing_houses = [h for h in required_houses if h not in covered_houses]
+
+    for missing_house in missing_houses:
+        if len(long_stories) >= 2:
+            break
+        house_pool = [
+            c for c in pool
+            if clean(c.get("house")) == missing_house
+            and c["video"] not in used
+        ]
+        house_pool.sort(key=lambda c: (1 if clean(c.get("speaker")) else 0, c.get("score", 0)), reverse=True)
+        added = False
+        for anchor in house_pool:
+            related = sorted(
+                [x for x in house_pool if x["video"] != anchor["video"] and x["video"] not in used],
+                key=lambda x: (similarity(anchor["text"], x["text"]), x["score"]),
+                reverse=True,
+            )
+            for other in related:
+                total = anchor["duration"] + other["duration"]
+                if not 181 <= total <= 600:
+                    continue
+                if similarity(anchor["text"], other["text"]) < 0.02:
+                    continue
+                long_stories.append(enrich_piece({
+                    "pieces": [anchor, other],
+                    "duration": round(total, 3),
+                    "score": anchor["score"] + other["score"] + 8,
+                    "speakers": [x["speaker"] for x in (anchor, other) if x.get("speaker")],
+                    "houses": [missing_house],
+                    "topic_text": anchor["text"] + " " + other["text"],
+                    "source_title": " / ".join(x.get("page_title", "") for x in (anchor, other) if x.get("page_title")),
+                }))
+                used.update([anchor["video"], other["video"]])
+                added = True
+                break
+            if added:
+                break
+
+    # Fill any remaining Long slot from the strongest unused substantive window,
+    # but never violate the both-Houses requirement when both Houses are present.
     if len(long_stories) < 2:
         for candidate in long_candidates:
             if len(long_stories) >= 2:
                 break
             video = candidate["video"]
+            house = clean(candidate.get("house"))
             if video in used or long_source_count.get(video, 0) >= 1:
+                continue
+            if required_houses and any(h not in {x for s in long_stories for x in (s.get("houses") or [])} for h in required_houses):
+                # Defer generic fill while a required House is still missing.
                 continue
             long_stories.append(enrich_piece({
                 "pieces": [candidate],
                 "duration": candidate["duration"],
                 "score": candidate["score"],
                 "speakers": [candidate["speaker"]] if candidate.get("speaker") else [],
-                "houses": [candidate["house"]] if candidate["house"] else [],
+                "houses": [house] if house else [],
                 "topic_text": candidate["text"],
             }))
             long_source_count[video] = 1
             used.add(video)
 
-    # If fewer than 12 coherent long windows exist, combine related short
-    # speech windows as a clearly sourced parliamentary discussion.
+    # Final fallback: combine related transcript windows only after House balance
+    # has been attempted. Never create a second Long from a single already-used
+    # House when both Houses are available.
     if len(long_stories) < 2:
         for anchor in pool:
-            if len(long_stories) >= 2:
+            if len(long_stories) >= 2 or anchor["video"] in used:
                 break
-            if anchor["video"] in used:
-                continue
             related = sorted(
                 [x for x in pool if x["video"] not in used and x["video"] != anchor["video"]],
                 key=lambda x: (similarity(anchor["text"], x["text"]), x["score"]), reverse=True)
             for other in related:
                 total = anchor["duration"] + other["duration"]
-                if total > 600:
+                if not 181 <= total <= 600:
                     continue
                 sim = similarity(anchor["text"], other["text"])
                 if sim < 0.02:
@@ -465,6 +513,12 @@ def main(input_dir, output_file):
     }
     Path(output_file).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Candidates: {len(candidates)} | Long stories: {len(long_stories)} | Short stories: {len(short_stories)}")
+    long_houses = {h for s in long_stories for h in (s.get("houses") or []) if h}
+    if len(long_houses) < 2 and {"House of Representatives", "National Assembly"} <= set(houses):
+        raise RuntimeError(
+            f"Long stories must represent both Parliament Houses; found {sorted(long_houses)}. "
+            "The selector will not substitute a second story from the same House."
+        )
     if len(long_stories) < 2 or len(short_stories) < 2:
         raise RuntimeError(
             f"Not enough diverse stories for a safe 2+2 daily build: "
