@@ -108,15 +108,31 @@ def source_topic_label(title):
         return "Parliamentary Session"
     if any(x in lowered for x in ("zero hour", "शून्य समय")):
         return "Zero Hour Discussion"
+    if any(x in lowered for x in ("jawaf", "जवाफ")):
+        return "Parliamentary Response"
     if any(x in lowered for x in ("pratibedan", "प्रतिवेदन", "annual report", "वार्षिक प्रतिवेदन")):
         return "Parliamentary Report"
     if any(x in lowered for x in ("prastav", "proposal", "प्रस्ताव")):
         return "Parliamentary Proposal"
     if any(x in lowered for x in ("bidhyak", "bill", "विधेयक")):
         return "Bill and Legislation"
-    if len(tail) > 120:
-        tail = tail[:120]
-    return neutralize_loaded_terms(tail)
+    if any(x in lowered for x in ("प्रश्नोत्तर", "question answer", "questions and answers", "question-answer")):
+        return "Parliamentary Q&A"
+    if any(x in lowered for x in ("विकास", "development")):
+        return "Development and Infrastructure"
+    if any(x in lowered for x in ("बजेट", "budget")):
+        return "Budget and Planning"
+    if any(x in lowered for x in ("कानुन", "law")):
+        return "Law and Legislation"
+    if any(x in lowered for x in ("शिक्षा", "education")):
+        return "Education"
+    if any(x in lowered for x in ("स्वास्थ्य", "health")):
+        return "Health"
+    if any(x in lowered for x in ("रोजगारी", "employment")):
+        return "Employment"
+    # Do not copy an arbitrary Nepali source-page label into an English-first
+    # publishable title. Use a neutral English fallback instead.
+    return "Parliamentary Discussion"
 
 def safe_speaker(value):
     value = clean(value)
