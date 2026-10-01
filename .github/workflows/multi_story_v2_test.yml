@@ -8,9 +8,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
-      WHISPER_BEAM_SIZE: "1"
+      WHISPER_BEAM_SIZE: "5"
       WHISPER_TEMPERATURE: "0.0"
-      WHISPER_CPU_THREADS: "2"
+      WHISPER_CPU_THREADS: "4"
 
     steps:
       - name: Checkout repository
