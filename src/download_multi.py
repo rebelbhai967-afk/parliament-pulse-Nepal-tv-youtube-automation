@@ -316,29 +316,36 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
                 "source": page_source,
             })
 
-    named = [x for x in page_candidates if x["speaker"]]
-    unnamed = [x for x in page_candidates if not x["speaker"]]
-    ordered = []
+    # Build a balanced candidate pool across both Houses. Speaker attribution is
+    # best-effort, but source diversity is mandatory: a small run must not fill
+    # almost entirely from whichever House appears first on the archive page.
     houses = []
     for item in page_candidates:
         house = item["collection"]["house"]
         if house not in houses:
             houses.append(house)
 
-    while named and len(ordered) < max_videos:
+    by_house = {house: [] for house in houses}
+    for item in page_candidates:
+        by_house.setdefault(item["collection"]["house"], []).append(item)
+
+    # Within each House, prefer verified member names first, then other official
+    # Parliament pages. Never manufacture a speaker from a procedural page title.
+    for house in by_house:
+        by_house[house].sort(key=lambda x: (1 if x.get("speaker") else 0), reverse=True)
+
+    ordered = []
+    while len(ordered) < max_videos:
         made = False
         for house in houses:
-            hit = next((x for x in named if x["collection"]["house"] == house), None)
-            if hit:
-                ordered.append(hit)
-                named.remove(hit)
+            pool = by_house.get(house, [])
+            if pool:
+                ordered.append(pool.pop(0))
                 made = True
                 if len(ordered) >= max_videos:
                     break
         if not made:
             break
-
-    ordered.extend(unnamed[:max(0, max_videos - len(ordered))])
 
     for item in ordered:
         collection = item["collection"]
