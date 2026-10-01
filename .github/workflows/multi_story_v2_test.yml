@@ -3,14 +3,18 @@ name: Parliament Pulse Nepal Multi-Story V2 Test
 on:
   workflow_dispatch:
 
+concurrency:
+  group: parliament-pulse-v2-test
+  cancel-in-progress: true
+
 jobs:
   multi-story-build:
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     env:
-      WHISPER_BEAM_SIZE: "5"
+      WHISPER_BEAM_SIZE: "1"
       WHISPER_TEMPERATURE: "0.0"
-      WHISPER_CPU_THREADS: "4"
+      WHISPER_CPU_THREADS: "2"
 
     steps:
       - name: Checkout repository
@@ -50,7 +54,7 @@ jobs:
 
       - name: Download latest collections from both Houses
         run: |
-          python src/download_multi.py data/parliament_collections.json data/videos 8 16
+          python src/download_multi.py data/parliament_collections.json data/videos 4 12
 
       - name: Verify multi-source download
         run: |
