@@ -31,22 +31,35 @@ def main(input_dir, output_dir, summary_output=None):
             if not text:
                 continue
             summary_source.append(text)
-            try:
-                english = translator.translate(text).strip()
-            except Exception as exc:
-                print("Translation warning:", exc)
-                english = text
+            english = text
+            for attempt in range(3):
+                try:
+                    english = translator.translate(text).strip()
+                    break
+                except Exception as exc:
+                    print(f"Translation warning (attempt {attempt + 1}/3):", exc)
+                    time.sleep(1.5 * (attempt + 1))
             lines.append((float(seg.get("start",0)), float(seg.get("end",0)), english))
-            time.sleep(0.15)
+            # Google Translate throttles requests above roughly 5/sec. Keep a
+            # deliberate 4 req/sec ceiling so long Parliament transcripts do not
+            # flood the service and silently degrade into untranslated captions.
+            time.sleep(0.25)
         with target.open("w", encoding="utf-8") as f:
             for i, (start, end, text) in enumerate(lines, 1):
                 f.write(f"{i}\n{fmt(start)} --> {fmt(end)}\n{text}\n\n")
         if summary_output is not None:
             sample = " ".join(summary_source[:8]).strip()
-            try:
-                summaries[file.stem] = translator.translate(sample[:1200]).strip() if sample else ""
-            except Exception:
-                summaries[file.stem] = ""
+            summary_text = ""
+            if sample:
+                for attempt in range(3):
+                    try:
+                        summary_text = translator.translate(sample[:1200]).strip()
+                        break
+                    except Exception as exc:
+                        print(f"Summary translation warning (attempt {attempt + 1}/3):", exc)
+                        time.sleep(1.5 * (attempt + 1))
+                time.sleep(0.25)
+            summaries[file.stem] = summary_text
         print("Translated", file.name)
     if summary_output is not None:
         Path(summary_output).write_text(json.dumps(summaries, ensure_ascii=False, indent=2), encoding="utf-8")
