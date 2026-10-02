@@ -310,6 +310,37 @@ def build(story, kind, index, summaries):
         "duration": story.get("duration"), "kind": kind
     }
 
+def ensure_unique_titles(items, kind, max_len):
+    """Make publishable titles deterministic and unique within the full daily set.
+
+    Two different stories can legitimately collapse to the same safe fallback
+    title after neutralization/truncation. Keep the descriptive title intact
+    and add a small format/index suffix only when a collision actually occurs.
+    """
+    seen = set()
+    for item in items:
+        title = clean(item.get("title"))
+        key = title.casefold()
+        if key not in seen:
+            seen.add(key)
+            item["title"] = title
+            continue
+
+        suffix = f" | {kind.title()} {item.get('index', len(seen) + 1)}"
+        base_limit = max(1, max_len - len(suffix))
+        base = title[:base_limit].rstrip(" |:-")
+        candidate = final_safe_text(f"{base}{suffix}")
+        counter = 2
+        while candidate.casefold() in seen:
+            suffix = f" | {kind.title()} {item.get('index', len(seen) + 1)}-{counter}"
+            base_limit = max(1, max_len - len(suffix))
+            base = title[:base_limit].rstrip(" |:-")
+            candidate = final_safe_text(f"{base}{suffix}")
+            counter += 1
+        item["title"] = candidate
+        seen.add(candidate.casefold())
+
+
 def main(selection, output, summary_file=None):
     data = json.loads(Path(selection).read_text(encoding="utf-8"))
     out = Path(output)
@@ -317,6 +348,12 @@ def main(selection, output, summary_file=None):
     summaries = json.loads(Path(summary_file).read_text(encoding="utf-8")) if summary_file and Path(summary_file).exists() else {}
     longs = [build(x, "long", i, summaries) for i, x in enumerate(data.get("long_stories", []), 1)]
     shorts = [build(x, "short", i, summaries) for i, x in enumerate(data.get("short_stories", []), 1)]
+
+    # Run uniqueness across the complete daily package, not separately per
+    # format, so a Long title can never collide with a Short title either.
+    all_items = longs + shorts
+    ensure_unique_titles(all_items, "story", 100)
+
     (out / "long_metadata.json").write_text(json.dumps(longs, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "short_metadata.json").write_text(json.dumps(shorts, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "all_metadata.json").write_text(json.dumps({"long": longs, "short": shorts}, ensure_ascii=False, indent=2), encoding="utf-8")
