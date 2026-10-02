@@ -112,7 +112,7 @@ jobs:
       - name: Translate candidate transcripts to English subtitles and topic summaries
         run: |
           mkdir -p data/subtitles_v2
-          python src/batch_translate.py data/transcripts_clean data/subtitles_v2 data/subtitles_v2/topic_summaries.json
+          python src/batch_translate.py data/transcripts_clean data/subtitles_v2 data/subtitles_v2/topic_summaries.json data/multi_story_selection.json
 
       - name: Generate human-style English metadata and hook package
         run: |
