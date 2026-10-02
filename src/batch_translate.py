@@ -13,11 +13,22 @@ def fmt(seconds):
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def main(input_dir, output_dir, summary_output=None):
+def main(input_dir, output_dir, summary_output=None, selection_file=None):
     inp, out = Path(input_dir), Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     translator = GoogleTranslator(source="ne", target="en")
     files = sorted(inp.glob("video_*.json"))
+    if selection_file and Path(selection_file).exists():
+        selection = json.loads(Path(selection_file).read_text(encoding="utf-8"))
+        selected_videos = {
+            str(Path(piece.get("video", "")).resolve())
+            for story in (selection.get("long_stories", []) + selection.get("short_stories", []))
+            for piece in story.get("pieces", [])
+            if piece.get("video")
+        }
+        files = [f for f in files if str((Path("data/transcripts_clean") / f.name).resolve()) in selected_videos
+                 or str((Path("data/videos") / f"{f.stem}.mp4").resolve()) in selected_videos]
+        print(f"Selected transcript sources for translation: {len(files)}")
     summaries = {}
     if not files:
         raise RuntimeError("No cleaned transcripts found.")
@@ -67,7 +78,12 @@ def main(input_dir, output_dir, summary_output=None):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) not in (3, 4):
-        print("Usage: python src/batch_translate.py <cleaned_transcripts> <srt_output> [summary_json]")
+    if len(sys.argv) not in (3, 4, 5):
+        print("Usage: python src/batch_translate.py <cleaned_transcripts> <srt_output> [summary_json] [selection_json]")
         raise SystemExit(1)
-    main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) == 4 else None)
+    main(
+        sys.argv[1],
+        sys.argv[2],
+        sys.argv[3] if len(sys.argv) >= 4 else None,
+        sys.argv[4] if len(sys.argv) == 5 else None,
+    )
