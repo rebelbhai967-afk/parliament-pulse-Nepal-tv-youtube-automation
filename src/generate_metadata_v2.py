@@ -211,7 +211,12 @@ def build(story, kind, index, summaries):
         title = f"{speaker_text} | {title_topic[:58]} | {house_text}"
     else:
         speaker = speakers[0] if speakers else safe_speaker(story.get("speaker"))
-        title = f"{speaker} | {title_topic[:55]} | {house_text}" if speaker else f"{title_topic[:55]} | {house_text}"
+        # Shorts need a compact mobile-first title. Keep the complete title
+        # under 90 characters so the validator and downstream platforms do not
+        # receive truncated/overlong titles.
+        short_prefix = f"{speaker} | " if speaker else ""
+        available = max(20, 88 - len(short_prefix) - len(house_text) - 3)
+        title = f"{short_prefix}{title_topic[:available]} | {house_text}"
 
     title = neutralize_loaded_terms(title)
     title = re.sub(r"\s+", " ", title).strip()
