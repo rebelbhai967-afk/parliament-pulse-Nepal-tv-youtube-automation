@@ -83,7 +83,18 @@ def speaker_from_link(text):
     # safety filter so labels such as "Zero Hour" or "Bill Presented" are never
     # promoted to speaker names.
     value = clean(text)
-    if re.match(r"^video\s*[-–:]\s*", value, re.I):
+    # Collection cards often expose a larger parent label such as
+    # "Meeting ... video - Member Name video - Member Name". Extract the
+    # official "video - Name" token anywhere in that label, rather than only
+    # when the whole string starts with "video -".
+    match = re.search(
+        r"video\s*[-–:]\s*(.*?)(?=\s+video\s*[-–:]|$)",
+        value,
+        flags=re.I,
+    )
+    if match:
+        value = clean(match.group(1))
+    else:
         value = re.sub(r"^video\s*[-–:]\s*", "", value, flags=re.I).strip()
     return normalize_speaker(value)
 
