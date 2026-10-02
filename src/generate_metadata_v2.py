@@ -310,12 +310,13 @@ def build(story, kind, index, summaries):
         "duration": story.get("duration"), "kind": kind
     }
 
-def ensure_unique_titles(items, kind, max_len):
+def ensure_unique_titles(items):
     """Make publishable titles deterministic and unique within the full daily set.
 
     Two different stories can legitimately collapse to the same safe fallback
     title after neutralization/truncation. Keep the descriptive title intact
     and add a small format/index suffix only when a collision actually occurs.
+    Shorts retain their compact mobile-first limit.
     """
     seen = set()
     for item in items:
@@ -326,13 +327,16 @@ def ensure_unique_titles(items, kind, max_len):
             item["title"] = title
             continue
 
-        suffix = f" | {kind.title()} {item.get('index', len(seen) + 1)}"
+        kind = clean(item.get("kind")) or "story"
+        index = item.get("index", len(seen) + 1)
+        max_len = 88 if kind == "short" else 100
+        suffix = f" | {kind.title()} {index}"
         base_limit = max(1, max_len - len(suffix))
         base = title[:base_limit].rstrip(" |:-")
         candidate = final_safe_text(f"{base}{suffix}")
         counter = 2
         while candidate.casefold() in seen:
-            suffix = f" | {kind.title()} {item.get('index', len(seen) + 1)}-{counter}"
+            suffix = f" | {kind.title()} {index}-{counter}"
             base_limit = max(1, max_len - len(suffix))
             base = title[:base_limit].rstrip(" |:-")
             candidate = final_safe_text(f"{base}{suffix}")
@@ -352,7 +356,7 @@ def main(selection, output, summary_file=None):
     # Run uniqueness across the complete daily package, not separately per
     # format, so a Long title can never collide with a Short title either.
     all_items = longs + shorts
-    ensure_unique_titles(all_items, "story", 100)
+    ensure_unique_titles(all_items)
 
     (out / "long_metadata.json").write_text(json.dumps(longs, ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "short_metadata.json").write_text(json.dumps(shorts, ensure_ascii=False, indent=2), encoding="utf-8")
