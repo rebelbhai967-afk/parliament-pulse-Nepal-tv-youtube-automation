@@ -126,6 +126,11 @@ def final_safe_text(text):
         value = re.sub(rf"(?i)(?<![A-Za-z]){re.escape(banned)}(?![A-Za-z])", "", value)
     for banned in TITLE_BANNED:
         value = re.sub(rf"(?i)\b{re.escape(banned)}\b", "", value)
+    # Absolute final guard against unusual Unicode/punctuation boundaries.
+    for banned, replacement in replacements.items():
+        value = re.sub(re.escape(banned), replacement, value, flags=re.I)
+    for banned in TITLE_BANNED:
+        value = re.sub(re.escape(banned), "", value, flags=re.I)
     return re.sub(r"\s+", " ", value).strip(" |:-")
 
 def english_keywords(text):
