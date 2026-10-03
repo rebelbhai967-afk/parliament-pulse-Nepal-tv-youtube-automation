@@ -124,11 +124,24 @@ def build_candidate(segments, i, min_s=60, max_s=180):
             left += 1; start = float(segments[left].get("start", start))
         else:
             right -= 1; end = float(segments[right].get("end", end))
-    text = " ".join(clean(s.get("nepali")) for s in segments[left:right+1])
-    opening_text = " ".join(clean(s.get("nepali")) for s in segments[left:min(left + 2, right + 1)])
-    logs = [float(s.get("avg_logprob", 0.0)) for s in segments[left:right+1] if s.get("avg_logprob") is not None]
+    selected = segments[left:right+1]
+    text = " ".join(clean(s.get("nepali")) for s in selected)
+    opening_text = " ".join(clean(s.get("nepali")) for s in selected[:2])
+    logs = [float(s.get("avg_logprob", 0.0)) for s in selected if s.get("avg_logprob") is not None]
     avg_logprob = sum(logs) / len(logs) if logs else None
-    return {"start": round(start,3), "end": round(end,3), "duration": round(end-start,3), "score": score(text, avg_logprob), "text": text, "hook_text": opening_text, "avg_logprob": avg_logprob}
+    max_gap = 0.0
+    for previous, current in zip(selected, selected[1:]):
+        gap = max(
+            0.0,
+            float(current.get("start", 0)) - float(previous.get("end", 0)),
+        )
+        max_gap = max(max_gap, gap)
+    return {
+        "start": round(start,3), "end": round(end,3),
+        "duration": round(end-start,3), "score": score(text, avg_logprob),
+        "text": text, "hook_text": opening_text, "avg_logprob": avg_logprob,
+        "max_transcript_gap": round(max_gap, 3),
+    }
 
 def build_long_windows(segments, max_windows=3):
     """Create coherent 3–5 minute windows around strong transcript anchors."""
@@ -270,6 +283,10 @@ def main(input_dir, output_file):
         if len(text_value) < 80:
             continue
         if c.get("avg_logprob") is not None and c["avg_logprob"] < -0.95:
+            continue
+        # A long transcript gap usually corresponds to silence/dead air in the
+        # source recording. Shorts must stay within continuous speech windows.
+        if c.get("max_transcript_gap", 0) > 5.0:
             continue
         if short_per_video.get(c["video"], 0) >= 2:
             continue
