@@ -30,7 +30,13 @@ def render_segment(piece, subtitle_dir, output, kind, start, duration):
     else:
         filters += ["scale=1920:1080:force_original_aspect_ratio=decrease", "pad=1920:1080:(ow-iw)/2:(oh-ih)/2"]
     if srt.exists():
-        filters.append(f"subtitles={srt.resolve()}:force_style='FontName=DejaVu Sans,FontSize=22,Outline=2,Shadow=1,Alignment=2,MarginV=120'")
+        # Burn in compact English subtitles without covering the parliamentary
+        # speaker or sign-language inset on vertical Shorts.
+        filters.append(
+            f"subtitles={srt.resolve()}:force_style="
+            "'FontName=DejaVu Sans,FontSize=14,Outline=1,Shadow=0,"
+            "Alignment=2,MarginV=90,WrapStyle=2'"
+        )
     command += ["-vf", ",".join(filters), "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-c:a", "aac", "-b:a", "128k", str(output)]
     run(command)
 
