@@ -130,7 +130,7 @@ def max_silence_seconds(path):
     output = (result.stdout or "") + (result.stderr or "")
     import re
     durations = []
-    for match in re.finditer(r"silence_duration:s*([0-9.]+)", output):
+    for match in re.finditer(r"silence_duration:\s*([0-9.]+)", output):
         durations.append(float(match.group(1)))
     return max(durations, default=0.0)
 
@@ -165,6 +165,8 @@ def main(selection_path, masters_dir, thumbnails_dir, subtitles_dir):
     long_houses = set()
     generic_speakers = {
         "", "zero hour", "special hour", "jawaf", "prastav prastut",
+        "download on app store", "download on the app store", "get it on google play",
+        "get it on google play store", "app store", "google play", "watch on youtube",
         "ninrnayartha prastut", "nirdeshan", "samjhauta pes", "summary",
         "first meeting", "meeting", "sammananiye sabhamukh", "video",
         "watch video", "pratibedan pes", "pratibedhan pes", "national anthem",
@@ -293,7 +295,7 @@ def main(selection_path, masters_dir, thumbnails_dir, subtitles_dir):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
+    if len(sys.argv) != 5:
         raise SystemExit(
             "Usage: python src/quality_control.py "
             "<selection_json> <masters_dir> <thumbnails_dir> <subtitles_dir>"
