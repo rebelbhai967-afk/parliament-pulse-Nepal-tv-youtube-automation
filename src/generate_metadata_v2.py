@@ -178,7 +178,11 @@ def safe_speaker(value):
     if not value:
         return ""
     lowered = value.lower()
-    bad = ("zero hour", "special hour", "jawaf", "prastav", "pratibedan", "bidhyak",
+    bad = (
+           "download on app store", "download on the app store",
+           "get it on google play", "get it on google play store",
+           "app store", "google play", "watch on youtube",
+           "zero hour", "special hour", "jawaf", "prastav", "pratibedan", "bidhyak",
            "sammananiye", "national anthem", "प्रतिवेदन", "सभासमक्ष", "प्रस्ताव", "विधेयक",
            "प्रस्तुत", "पेस", "अध्यक्ष", "शून्य समय")
     return "" if any(x in lowered for x in bad) else value
