@@ -45,7 +45,7 @@ jobs:
 
       - name: Compile editorial pipeline
         run: |
-          python -m py_compile src/download_multi.py src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/batch_translate.py src/render_stories.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py src/normalize_selection.py
+          python -m py_compile src/download_multi.py src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/batch_translate.py src/render_stories.py src/quality_control.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py src/normalize_selection.py
 
       - name: Discover both Parliament Houses
         run: |
@@ -150,7 +150,7 @@ jobs:
 
       - name: Automated quality control
         run: |
-          python src/quality_control.py data/multi_story_selection.json output/multi_story_masters output/multi_story_thumbnails
+          python src/quality_control.py data/multi_story_selection.json output/multi_story_masters output/multi_story_thumbnails data/subtitles_v2
 
       - name: Verify story targets
         run: |
@@ -198,6 +198,7 @@ jobs:
             data/metadata_v2/
             data/content_ledger.json
             data/editorial_review_queue.json
+            data/subtitles_v2/
           if-no-files-found: error
           retention-days: 7
 
