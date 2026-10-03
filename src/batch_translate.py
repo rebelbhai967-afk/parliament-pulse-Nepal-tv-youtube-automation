@@ -1,6 +1,7 @@
 import json
 import sys
 import time
+import re
 from pathlib import Path
 from deep_translator import GoogleTranslator
 
