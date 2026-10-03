@@ -3,7 +3,6 @@ import sys
 import time
 import re
 from pathlib import Path
-from deep_translator import GoogleTranslator
 
 
 def fmt(seconds):
@@ -50,29 +49,58 @@ def _overlaps_selected(seg_start, seg_end, ranges):
 
 
 
-def _translate_with_backoff(translator, text, label):
-    """Translate a batch with long cooldowns for public Google rate limits."""
+def _translate_with_backoff(text, label):
+    """Use Google's public translation endpoint directly, with endpoint fallback."""
     if not text:
         raise RuntimeError(f"Empty translation input for {label}")
-    max_attempts = 6
+    endpoints = [
+        "https://translate.googleapis.com/translate_a/single",
+        "https://translate.google.com/translate_a/single",
+    ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+        "Accept": "application/json,text/plain,*/*",
+    }
+    max_attempts = 4
+    last_error = None
     for attempt in range(max_attempts):
-        try:
-            result = translator.translate(text).strip()
-            if result:
-                return result
-            raise RuntimeError("translator returned an empty result")
-        except Exception as exc:
-            wait = min(120.0, 15.0 * (2 ** attempt))
-            print(
-                f"Translation warning (attempt {attempt + 1}/{max_attempts}) "
-                f"for {label}; waiting {wait:.0f}s: {exc}"
-            )
-            if attempt == max_attempts - 1:
-                raise RuntimeError(
-                    f"English translation failed for {label}: {exc}"
-                ) from exc
+        for endpoint in endpoints:
+            try:
+                params = {
+                    "client": "gtx",
+                    "sl": "ne",
+                    "tl": "en",
+                    "dt": "t",
+                    "ie": "UTF-8",
+                    "oe": "UTF-8",
+                    "q": text,
+                }
+                response = requests.get(endpoint, params=params, headers=headers, timeout=30)
+                if response.status_code in (403, 429):
+                    raise RuntimeError(f"HTTP {response.status_code} rate-limited by {endpoint}")
+                response.raise_for_status()
+                payload = response.json()
+                parts = []
+                if isinstance(payload, list) and payload and isinstance(payload[0], list):
+                    for item in payload[0]:
+                        if isinstance(item, list) and item and item[0]:
+                            parts.append(str(item[0]))
+                elif isinstance(payload, dict):
+                    for item in payload.get("sentences", []):
+                        if item.get("trans"):
+                            parts.append(str(item["trans"]))
+                result = "".join(parts).strip()
+                if result:
+                    return result
+                raise RuntimeError("Google translation response contained no translated text")
+            except Exception as exc:
+                last_error = exc
+                print(f"Translation endpoint warning for {label}: {exc}")
+        wait = min(120.0, 15.0 * (2 ** attempt))
+        if attempt < max_attempts - 1:
+            print(f"Translation retry {attempt + 1}/{max_attempts}; waiting {wait:.0f}s")
             time.sleep(wait)
-
+    raise RuntimeError(f"English translation failed for {label}: {last_error}") from last_error
 
 def _validate_english(english, label):
     letters = [ch for ch in english if ch.isalpha()]
@@ -81,7 +109,7 @@ def _validate_english(english, label):
         raise RuntimeError(f"Translation appears non-English for {label}")
 
 
-def _translate_segments(translator, segments, label_prefix):
+def _translate_segments(segments, label_prefix):
     """Translate many subtitle segments in one request to avoid per-segment throttling."""
     results = []
     batch = []
@@ -101,7 +129,7 @@ def _translate_segments(translator, segments, label_prefix):
             source_parts.append(f"{marker}: {text}")
         payload = "\n".join(source_parts)
         translated = _translate_with_backoff(
-            translator, payload, f"{label_prefix} batch {batch_index}"
+            payload, f"{label_prefix} batch {batch_index}"
         )
         _validate_english(translated, f"{label_prefix} batch {batch_index}")
 
@@ -146,8 +174,7 @@ def _translate_segments(translator, segments, label_prefix):
 def main(input_dir, output_dir, summary_output=None, selection_file=None):
     inp, out = Path(input_dir), Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    translator = GoogleTranslator(source="ne", target="en")
-    files = sorted(inp.glob("video_*.json"))
+        files = sorted(inp.glob("video_*.json"))
     selected_ranges = _selected_ranges(selection_file)
 
     if selected_ranges:
@@ -178,7 +205,6 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
             raise RuntimeError(f"No selected transcript segments found for {file.name}")
 
         translated = _translate_segments(
-            translator,
             [(i, text) for i, (_, _, text) in enumerate(selected)],
             file.name,
         )
