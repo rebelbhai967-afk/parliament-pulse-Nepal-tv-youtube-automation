@@ -42,14 +42,27 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
             if not text:
                 continue
             summary_source.append(text)
-            english = text
+            english = ""
+            last_error = None
             for attempt in range(3):
                 try:
                     english = translator.translate(text).strip()
-                    break
+                    if english:
+                        break
                 except Exception as exc:
+                    last_error = exc
                     print(f"Translation warning (attempt {attempt + 1}/3):", exc)
                     time.sleep(1.5 * (attempt + 1))
+            if not english:
+                raise RuntimeError(
+                    f"English translation failed for {file.name} segment {seg.get('start', 0)}: {last_error}"
+                )
+            letters = [ch for ch in english if ch.isalpha()]
+            latin = [ch for ch in letters if ('A' <= ch <= 'Z') or ('a' <= ch <= 'z')]
+            if len(letters) >= 12 and len(latin) / len(letters) < 0.55:
+                raise RuntimeError(
+                    f"Translation appears non-English for {file.name} at {seg.get('start', 0)}s"
+                )
             lines.append((float(seg.get("start",0)), float(seg.get("end",0)), english))
             # Google Translate throttles requests above roughly 5/sec. Keep a
             # deliberate 4 req/sec ceiling so long Parliament transcripts do not
