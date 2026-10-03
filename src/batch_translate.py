@@ -3,6 +3,7 @@ import sys
 import time
 import re
 from pathlib import Path
+import requests
 
 
 def fmt(seconds):
@@ -174,7 +175,7 @@ def _translate_segments(segments, label_prefix):
 def main(input_dir, output_dir, summary_output=None, selection_file=None):
     inp, out = Path(input_dir), Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
-        files = sorted(inp.glob("video_*.json"))
+    files = sorted(inp.glob("video_*.json"))
     selected_ranges = _selected_ranges(selection_file)
 
     if selected_ranges:
