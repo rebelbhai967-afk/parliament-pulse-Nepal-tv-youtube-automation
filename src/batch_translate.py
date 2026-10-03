@@ -48,8 +48,9 @@ def _overlaps_selected(seg_start, seg_end, ranges):
     return any(seg_end > start and seg_start < end for start, end in ranges)
 
 
+
 def _translate_with_backoff(translator, text, label):
-    """Translate with a conservative request rate and exponential backoff."""
+    """Translate a batch with long cooldowns for public Google rate limits."""
     if not text:
         raise RuntimeError(f"Empty translation input for {label}")
     max_attempts = 6
@@ -60,10 +61,10 @@ def _translate_with_backoff(translator, text, label):
                 return result
             raise RuntimeError("translator returned an empty result")
         except Exception as exc:
-            wait = min(60.0, 5.0 * (2 ** attempt))
+            wait = min(120.0, 15.0 * (2 ** attempt))
             print(
                 f"Translation warning (attempt {attempt + 1}/{max_attempts}) "
-                f"for {label}: {exc}"
+                f"for {label}; waiting {wait:.0f}s: {exc}"
             )
             if attempt == max_attempts - 1:
                 raise RuntimeError(
@@ -79,6 +80,68 @@ def _validate_english(english, label):
         raise RuntimeError(f"Translation appears non-English for {label}")
 
 
+def _translate_segments(translator, segments, label_prefix):
+    """Translate many subtitle segments in one request to avoid per-segment throttling."""
+    results = []
+    batch = []
+    chars = 0
+    batch_index = 0
+
+    def flush():
+        nonlocal batch, chars, batch_index
+        if not batch:
+            return
+        batch_index += 1
+        markers = []
+        source_parts = []
+        for index, text in batch:
+            marker = f"PPSEG{index:04d}"
+            markers.append(marker)
+            source_parts.append(f"{marker}: {text}")
+        payload = "\n".join(source_parts)
+        translated = _translate_with_backoff(
+            translator, payload, f"{label_prefix} batch {batch_index}"
+        )
+        _validate_english(translated, f"{label_prefix} batch {batch_index}")
+
+        parsed = {}
+        for marker in markers:
+            match = re.search(
+                rf"{re.escape(marker)}\s*:\s*(.*?)(?=\s+PPSEG\d{{4}}\s*:|$)",
+                translated,
+                flags=re.DOTALL,
+            )
+            if match:
+                parsed[marker] = " ".join(match.group(1).split()).strip()
+
+        missing = [marker for marker in markers if not parsed.get(marker)]
+        if missing:
+            raise RuntimeError(
+                f"Could not safely map translated subtitle batch "
+                f"{batch_index}; missing markers: {', '.join(missing)}"
+            )
+        for index, _ in batch:
+            results.append((index, parsed[f"PPSEG{index:04d}"]))
+        batch = []
+        chars = 0
+
+    for index, text in segments:
+        # Stay well below the public endpoint's practical text-size limit.
+        added = len(text) + 18
+        if batch and chars + added > 2800:
+            flush()
+            # A small pause between successful batch requests prevents bursts.
+            time.sleep(2.0)
+        batch.append((index, text))
+        chars += added
+        if len(batch) >= 8:
+            flush()
+            time.sleep(2.0)
+    flush()
+    results.sort(key=lambda item: item[0])
+    return [text for _, text in results]
+
+
 def main(input_dir, output_dir, summary_output=None, selection_file=None):
     inp, out = Path(input_dir), Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -87,10 +150,7 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
     selected_ranges = _selected_ranges(selection_file)
 
     if selected_ranges:
-        files = [
-            f for f in files
-            if str(f.resolve()) in selected_ranges
-        ]
+        files = [f for f in files if str(f.resolve()) in selected_ranges]
         print(f"Selected transcript sources for translation: {len(files)}")
     elif selection_file and Path(selection_file).exists():
         raise RuntimeError("Selection contains no transcript windows for translation.")
@@ -99,65 +159,42 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
     if not files:
         raise RuntimeError("No cleaned transcripts found.")
 
-    # Google Translate's public endpoint can rate-limit bursty runners.
-    # Keep requests comfortably below the documented burst threshold and
-    # add backoff when the service responds with a server/rate-limit error.
-    request_interval = 1.25
-    last_request = 0.0
-    translation_cache = {}
-
-    def translate(text, label):
-        nonlocal last_request
-        now = time.monotonic()
-        delay = request_interval - (now - last_request)
-        if delay > 0:
-            time.sleep(delay)
-        result = translation_cache.get(text)
-        if result is None:
-            result = _translate_with_backoff(translator, text, label)
-            translation_cache[text] = result
-        last_request = time.monotonic()
-        _validate_english(result, label)
-        return result
-
     for file in files:
         target = out / f"{file.stem}.srt"
         data = json.loads(file.read_text(encoding="utf-8"))
         ranges = selected_ranges.get(str(file.resolve()))
-        lines = []
-        summary_source = []
-
+        selected = []
         for seg in data.get("segments", []):
             seg_start = float(seg.get("start", 0))
             seg_end = float(seg.get("end", seg_start))
             if not _overlaps_selected(seg_start, seg_end, ranges):
                 continue
             text = str(seg.get("nepali", "")).strip()
-            if not text:
-                continue
-            summary_source.append(text)
-            english = translate(
-                text,
-                f"{file.name} segment {seg.get('start', 0)}",
-            )
-            lines.append((seg_start, seg_end, english))
+            if text:
+                selected.append((seg_start, seg_end, text))
 
-        if not lines:
+        if not selected:
             raise RuntimeError(f"No selected transcript segments found for {file.name}")
+
+        translated = _translate_segments(
+            translator,
+            [(i, text) for i, (_, _, text) in enumerate(selected)],
+            file.name,
+        )
+        lines = [
+            (selected[i][0], selected[i][1], translated[i])
+            for i in range(len(selected))
+        ]
 
         with target.open("w", encoding="utf-8") as f:
             for i, (start, end, text) in enumerate(lines, 1):
                 f.write(f"{i}\n{fmt(start)} --> {fmt(end)}\n{text}\n\n")
 
         if summary_output is not None:
-            sample = " ".join(summary_source[:8]).strip()
-            summary_text = ""
-            if sample:
-                summary_text = translate(
-                    sample[:1200],
-                    f"{file.name} topic summary",
-                )
-            summaries[file.stem] = summary_text
+            # Avoid another Google request: the topic summary source is already
+            # represented by the first translated subtitle lines.
+            summary_text = " ".join(translated[:8]).strip()
+            summaries[file.stem] = summary_text[:2000]
         print("Translated", file.name)
 
     if summary_output is not None:
