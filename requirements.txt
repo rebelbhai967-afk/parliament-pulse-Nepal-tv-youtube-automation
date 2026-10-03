@@ -2,7 +2,6 @@ faster-whisper
 yt-dlp
 requests
 beautifulsoup4
-deep-translator
 google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
