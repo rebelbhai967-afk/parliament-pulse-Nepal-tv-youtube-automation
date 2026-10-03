@@ -25,6 +25,9 @@ def clean(value):
 
 GENERIC_SPEAKERS = {
     "", "zero hour", "special hour", "jawaf", "prastav prastut",
+    "download on app store", "download on the app store",
+    "get it on google play", "get it on google play store",
+    "app store", "google play", "watch on youtube",
     "ninrnayartha prastut", "nirdeshan", "samjhauta pes", "summary",
     "first meeting", "meeting", "sammananiye sabhamukh", "video",
     "watch video", "pratibedan pes", "pratibedhan pes", "national anthem",
@@ -55,6 +58,13 @@ def looks_like_person_name(text):
     if not text or any(ch.isdigit() for ch in text):
         return False
     normalized = text.lower()
+    ui_tokens = (
+        "download on app store", "download on the app store",
+        "get it on google play", "get it on google play store",
+        "app store", "google play", "watch on youtube",
+    )
+    if any(token in normalized for token in ui_tokens):
+        return False
     if normalized in GENERIC_SPEAKERS:
         return False
     if any(term in normalized for term in PROCEDURAL_SPEAKER_TERMS):
