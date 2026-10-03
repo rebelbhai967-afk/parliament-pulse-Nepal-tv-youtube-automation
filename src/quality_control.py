@@ -65,6 +65,76 @@ def has_audio(path):
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
+
+
+def subtitle_stats(path):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    cues = []
+    current = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            if current:
+                cues.append(" ".join(current))
+                current = []
+            continue
+        if "-->" in line or line.isdigit():
+            continue
+        current.append(line)
+    if current:
+        cues.append(" ".join(current))
+    joined = " ".join(cues)
+    letters = [ch for ch in joined if ch.isalpha()]
+    latin = [ch for ch in letters if ("A" <= ch <= "Z") or ("a" <= ch <= "z")]
+    ratio = (len(latin) / len(letters)) if letters else 0.0
+    return len(cues), ratio
+
+
+def validate_subtitles(selection, subtitles_dir, errors):
+    subtitles = Path(subtitles_dir)
+    checked = set()
+    for kind in ("long", "short"):
+        for i, story in enumerate(selection.get(f"{kind}_stories", []), 1):
+            for piece in story.get("pieces", []):
+                video = str(piece.get("video", "")).strip()
+                if not video:
+                    continue
+                stem = Path(video).stem
+                if stem in checked:
+                    continue
+                checked.add(stem)
+                path = subtitles / f"{stem}.srt"
+                if not path.exists():
+                    errors.append(f"{kind.title()} {i}: missing English subtitle file for {stem}")
+                    continue
+                cue_count, latin_ratio = subtitle_stats(path)
+                if cue_count == 0:
+                    errors.append(f"{kind.title()} {i}: empty subtitle file for {stem}")
+                elif latin_ratio < 0.55:
+                    errors.append(
+                        f"{kind.title()} {i}: subtitle file for {stem} is not English-first "
+                        f"(Latin-letter ratio {latin_ratio:.2f})"
+                    )
+
+
+def max_silence_seconds(path):
+    result = subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-i", str(path),
+            "-af", "silencedetect=noise=-35dB:d=5",
+            "-f", "null", "-"
+        ],
+        capture_output=True,
+        text=True,
+    )
+    output = (result.stdout or "") + (result.stderr or "")
+    import re
+    durations = []
+    for match in re.finditer(r"silence_duration:s*([0-9.]+)", output):
+        durations.append(float(match.group(1)))
+    return max(durations, default=0.0)
+
+
 def clean_list(values):
     return {
         str(v).strip().lower()
@@ -73,7 +143,7 @@ def clean_list(values):
     }
 
 
-def main(selection_path, masters_dir, thumbnails_dir):
+def main(selection_path, masters_dir, thumbnails_dir, subtitles_dir):
     selection = json.loads(Path(selection_path).read_text(encoding="utf-8"))
     masters = Path(masters_dir)
     thumbs = Path(thumbnails_dir)
@@ -82,6 +152,8 @@ def main(selection_path, masters_dir, thumbnails_dir):
     shorts = selection.get("short_stories", [])
 
     errors = []
+
+    validate_subtitles(selection, subtitles_dir, errors)
 
     if len(longs) != 2:
         errors.append(f"Expected exactly 2 long stories, found {len(longs)}")
@@ -136,7 +208,13 @@ def main(selection_path, masters_dir, thumbnails_dir):
             duration = check_video(path, 1, 89.999, 1080, 1920)
             if not has_audio(path):
                 errors.append(f"Short {i}: rendered master has no audio stream")
-            print(f"SHORT {i:02d}: {duration:.1f}s OK")
+            silence = max_silence_seconds(path)
+            if silence > 5.0:
+                errors.append(
+                    f"Short {i}: continuous silence is too long ({silence:.1f}s); "
+                    "select/render a tighter speech window"
+                )
+            print(f"SHORT {i:02d}: {duration:.1f}s OK; max silence {silence:.1f}s")
         except Exception as exc:
             errors.append(str(exc))
 
@@ -218,6 +296,6 @@ if __name__ == "__main__":
     if len(sys.argv) != 4:
         raise SystemExit(
             "Usage: python src/quality_control.py "
-            "<selection_json> <masters_dir> <thumbnails_dir>"
+            "<selection_json> <masters_dir> <thumbnails_dir> <subtitles_dir>"
         )
     main(*sys.argv[1:])
