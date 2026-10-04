@@ -92,7 +92,7 @@ def _validate_english(english, label):
 
 
 def _translate_segments(segments, label_prefix, translator):
-    """Translate selected subtitle segments locally, preserving segment boundaries."""
+    """Translate selected subtitle segments locally, preserving segment order."""
     results = []
     for index, text in segments:
         translated = _translate_with_backoff(
@@ -101,7 +101,7 @@ def _translate_segments(segments, label_prefix, translator):
         _validate_english(
             translated, f"{label_prefix} segment {index + 1}"
         )
-        results.append((index, " ".join(translated.split()).strip()))
+        results.append(" ".join(translated.split()).strip())
     return results
 
 def main(input_dir, output_dir, summary_output=None, selection_file=None):
