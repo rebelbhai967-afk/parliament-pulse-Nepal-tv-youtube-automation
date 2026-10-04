@@ -50,57 +50,28 @@ def _overlaps_selected(seg_start, seg_end, ranges):
 
 
 
-def _translate_with_backoff(text, label):
-    """Use Google's public translation endpoint directly, with endpoint fallback."""
+def _translate_with_backoff(text, label, translator):
+    """Translate locally with IndicTrans2; no remote translation API."""
     if not text:
         raise RuntimeError(f"Empty translation input for {label}")
-    endpoints = [
-        "https://translate.googleapis.com/translate_a/single",
-        "https://translate.google.com/translate_a/single",
-    ]
-    headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
-        "Accept": "application/json,text/plain,*/*",
-    }
-    max_attempts = 4
     last_error = None
-    for attempt in range(max_attempts):
-        for endpoint in endpoints:
-            try:
-                params = {
-                    "client": "gtx",
-                    "sl": "ne",
-                    "tl": "en",
-                    "dt": "t",
-                    "ie": "UTF-8",
-                    "oe": "UTF-8",
-                    "q": text,
-                }
-                response = requests.get(endpoint, params=params, headers=headers, timeout=30)
-                if response.status_code in (403, 429):
-                    raise RuntimeError(f"HTTP {response.status_code} rate-limited by {endpoint}")
-                response.raise_for_status()
-                payload = response.json()
-                parts = []
-                if isinstance(payload, list) and payload and isinstance(payload[0], list):
-                    for item in payload[0]:
-                        if isinstance(item, list) and item and item[0]:
-                            parts.append(str(item[0]))
-                elif isinstance(payload, dict):
-                    for item in payload.get("sentences", []):
-                        if item.get("trans"):
-                            parts.append(str(item["trans"]))
-                result = "".join(parts).strip()
-                if result:
-                    return result
-                raise RuntimeError("Google translation response contained no translated text")
-            except Exception as exc:
-                last_error = exc
-                print(f"Translation endpoint warning for {label}: {exc}")
-        wait = min(120.0, 15.0 * (2 ** attempt))
-        if attempt < max_attempts - 1:
-            print(f"Translation retry {attempt + 1}/{max_attempts}; waiting {wait:.0f}s")
-            time.sleep(wait)
+    for attempt in range(3):
+        try:
+            result = translator.translate(
+                text,
+                src_lang="npi_Deva",
+                tgt_lang="eng_Latn",
+                max_new_tokens=128,
+            ).strip()
+            if not result:
+                raise RuntimeError("Local translation returned empty text")
+            return result
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                wait = 5 * (attempt + 1)
+                print(f"Local translation retry {attempt + 1}/3 for {label}; waiting {wait}s")
+                time.sleep(wait)
     raise RuntimeError(f"English translation failed for {label}: {last_error}") from last_error
 
 def _validate_english(english, label):
@@ -120,67 +91,18 @@ def _validate_english(english, label):
                 raise RuntimeError(f"Translation appears garbled for {label}: {token}")
 
 
-def _translate_segments(segments, label_prefix):
-    """Translate many subtitle segments in one request to avoid per-segment throttling."""
+def _translate_segments(segments, label_prefix, translator):
+    """Translate selected subtitle segments locally, preserving segment boundaries."""
     results = []
-    batch = []
-    chars = 0
-    batch_index = 0
-
-    def flush():
-        nonlocal batch, chars, batch_index
-        if not batch:
-            return
-        batch_index += 1
-        markers = []
-        source_parts = []
-        for index, text in batch:
-            marker = f"PPSEG{index:04d}"
-            markers.append(marker)
-            source_parts.append(f"{marker}: {text}")
-        payload = "\n".join(source_parts)
-        translated = _translate_with_backoff(
-            payload, f"{label_prefix} batch {batch_index}"
-        )
-        _validate_english(translated, f"{label_prefix} batch {batch_index}")
-
-        parsed = {}
-        for marker in markers:
-            match = re.search(
-                rf"{re.escape(marker)}\s*:\s*(.*?)(?=\s+PPSEG\d{{4}}\s*:|$)",
-                translated,
-                flags=re.DOTALL,
-            )
-            if match:
-                parsed[marker] = " ".join(match.group(1).split()).strip()
-
-        missing = [marker for marker in markers if not parsed.get(marker)]
-        if missing:
-            raise RuntimeError(
-                f"Could not safely map translated subtitle batch "
-                f"{batch_index}; missing markers: {', '.join(missing)}"
-            )
-        for index, _ in batch:
-            results.append((index, parsed[f"PPSEG{index:04d}"]))
-        batch = []
-        chars = 0
-
     for index, text in segments:
-        # Stay well below the public endpoint's practical text-size limit.
-        added = len(text) + 18
-        if batch and chars + added > 2800:
-            flush()
-            # A small pause between successful batch requests prevents bursts.
-            time.sleep(2.0)
-        batch.append((index, text))
-        chars += added
-        if len(batch) >= 8:
-            flush()
-            time.sleep(2.0)
-    flush()
-    results.sort(key=lambda item: item[0])
-    return [text for _, text in results]
-
+        translated = _translate_with_backoff(
+            text, f"{label_prefix} segment {index + 1}", translator
+        )
+        _validate_english(
+            translated, f"{label_prefix} segment {index + 1}"
+        )
+        results.append((index, " ".join(translated.split()).strip()))
+    return results
 
 def main(input_dir, output_dir, summary_output=None, selection_file=None):
     inp, out = Path(input_dir), Path(output_dir)
