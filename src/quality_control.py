@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+import re
 from pathlib import Path
 
 
@@ -135,6 +136,42 @@ def max_silence_seconds(path):
     return max(durations, default=0.0)
 
 
+def looks_garbled_english(text):
+    """Reject obvious machine-translation corruption without judging normal prose."""
+    value = " ".join(str(text or "").split())
+    for token in re.findall(r"[A-Za-z]{16,}", value):
+        lowered = token.lower()
+        # Repeated 3-6 character chunks are a strong signal of corruption such as
+        # PROFRIBESTRIBSTRIB; normal English rarely repeats the same chunk 3+ times.
+        for size in range(3, 7):
+            chunks = [lowered[i:i + size] for i in range(0, len(lowered) - size + 1)]
+            repeated = {chunk for chunk in chunks if lowered.count(chunk) >= 3}
+            if repeated:
+                return True
+    return False
+
+
+def validate_english_quality(selection, subtitles_dir, errors):
+    subtitles = Path(subtitles_dir)
+    checked = set()
+    for kind in ("long", "short"):
+        for i, story in enumerate(selection.get(f"{kind}_stories", []), 1):
+            for piece in story.get("pieces", []):
+                video = str(piece.get("video", "")).strip()
+                if not video:
+                    continue
+                stem = Path(video).stem
+                if stem in checked:
+                    continue
+                checked.add(stem)
+                path = subtitles / f"{stem}.srt"
+                if not path.exists():
+                    continue
+                text = path.read_text(encoding="utf-8", errors="replace")
+                if looks_garbled_english(text):
+                    errors.append(f"{kind.title()} {i}: garbled English subtitle detected in {stem}")
+
+
 def clean_list(values):
     return {
         str(v).strip().lower()
@@ -154,6 +191,7 @@ def main(selection_path, masters_dir, thumbnails_dir, subtitles_dir):
     errors = []
 
     validate_subtitles(selection, subtitles_dir, errors)
+    validate_english_quality(selection, subtitles_dir, errors)
 
     if len(longs) != 2:
         errors.append(f"Expected exactly 2 long stories, found {len(longs)}")
@@ -166,7 +204,8 @@ def main(selection_path, masters_dir, thumbnails_dir, subtitles_dir):
     generic_speakers = {
         "", "zero hour", "special hour", "jawaf", "prastav prastut",
         "download on app store", "download on the app store", "get it on google play",
-        "get it on google play store", "app store", "google play", "watch on youtube",
+        "get it on google play store", "app store", "google play", "download on play store", "download on the play store",
+        "get it on play store", "get it on the play store", "play store", "watch on youtube",
         "ninrnayartha prastut", "nirdeshan", "samjhauta pes", "summary",
         "first meeting", "meeting", "sammananiye sabhamukh", "video",
         "watch video", "pratibedan pes", "pratibedhan pes", "national anthem",
