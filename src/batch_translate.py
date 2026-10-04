@@ -109,6 +109,16 @@ def _validate_english(english, label):
     if len(letters) >= 12 and len(latin) / len(letters) < 0.55:
         raise RuntimeError(f"Translation appears non-English for {label}")
 
+    # Reject obvious translation corruption such as PROFRIBESTRIBSTRIB.
+    # Repeated 3-6 character chunks 3+ times inside a long token are highly
+    # unlikely in normal English and should fail closed before subtitles ship.
+    for token in re.findall(r"[A-Za-z]{16,}", english):
+        lowered = token.lower()
+        for size in range(3, 7):
+            chunks = [lowered[i:i + size] for i in range(0, len(lowered) - size + 1)]
+            if any(lowered.count(chunk) >= 3 for chunk in set(chunks)):
+                raise RuntimeError(f"Translation appears garbled for {label}: {token}")
+
 
 def _translate_segments(segments, label_prefix):
     """Translate many subtitle segments in one request to avoid per-segment throttling."""
