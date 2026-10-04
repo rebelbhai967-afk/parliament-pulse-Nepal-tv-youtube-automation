@@ -2,8 +2,8 @@ import json
 import sys
 import time
 import re
+import os
 from pathlib import Path
-import requests
 
 
 def fmt(seconds):
@@ -120,6 +120,14 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
     if not files:
         raise RuntimeError("No cleaned transcripts found.")
 
+    model_name = os.environ.get(
+        "INDICTRANS_MODEL",
+        "hari31416/indictrans2-indic-en-dist-200M-ONNX-int8",
+    )
+    print(f"Loading free offline translation model: {model_name}")
+    from indictrans_onnx import IndicTransONNX
+    translator = IndicTransONNX(model_name)
+
     for file in files:
         target = out / f"{file.stem}.srt"
         data = json.loads(file.read_text(encoding="utf-8"))
@@ -140,6 +148,7 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
         translated = _translate_segments(
             [(i, text) for i, (_, _, text) in enumerate(selected)],
             file.name,
+            translator,
         )
         lines = [
             (selected[i][0], selected[i][1], translated[i])
