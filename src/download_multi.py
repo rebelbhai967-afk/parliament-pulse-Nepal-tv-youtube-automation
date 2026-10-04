@@ -27,7 +27,8 @@ GENERIC_SPEAKERS = {
     "", "zero hour", "special hour", "jawaf", "prastav prastut",
     "download on app store", "download on the app store",
     "get it on google play", "get it on google play store",
-    "app store", "google play", "watch on youtube",
+    "app store", "google play", "download on play store", "download on the play store",
+    "get it on play store", "get it on the play store", "play store", "watch on youtube",
     "ninrnayartha prastut", "nirdeshan", "samjhauta pes", "summary",
     "first meeting", "meeting", "sammananiye sabhamukh", "video",
     "watch video", "pratibedan pes", "pratibedhan pes", "national anthem",
@@ -61,7 +62,8 @@ def looks_like_person_name(text):
     ui_tokens = (
         "download on app store", "download on the app store",
         "get it on google play", "get it on google play store",
-        "app store", "google play", "watch on youtube",
+        "app store", "google play", "download on play store", "download on the play store",
+        "get it on play store", "get it on the play store", "play store", "watch on youtube",
     )
     if any(token in normalized for token in ui_tokens):
         return False
