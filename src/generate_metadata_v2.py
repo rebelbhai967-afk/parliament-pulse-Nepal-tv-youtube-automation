@@ -181,7 +181,8 @@ def safe_speaker(value):
     bad = (
            "download on app store", "download on the app store",
            "get it on google play", "get it on google play store",
-           "app store", "google play", "watch on youtube",
+           "app store", "google play", "download on play store", "download on the play store",
+           "get it on play store", "get it on the play store", "play store", "watch on youtube",
            "zero hour", "special hour", "jawaf", "prastav", "pratibedan", "bidhyak",
            "sammananiye", "national anthem", "प्रतिवेदन", "सभासमक्ष", "प्रस्ताव", "विधेयक",
            "प्रस्तुत", "पेस", "अध्यक्ष", "शून्य समय")
