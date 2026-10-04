@@ -5,3 +5,7 @@ beautifulsoup4
 google-api-python-client
 google-auth-oauthlib
 google-auth-httplib2
+onnxruntime
+tokenizers
+huggingface-hub
+indictranstoolkit
