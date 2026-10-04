@@ -15,6 +15,7 @@ jobs:
       WHISPER_BEAM_SIZE: "1"
       WHISPER_TEMPERATURE: "0.0"
       WHISPER_CPU_THREADS: "2"
+      INDICTRANS_MODEL: "hari31416/indictrans2-indic-en-dist-200M-ONNX-int8"
 
     steps:
       - name: Checkout repository
@@ -45,7 +46,19 @@ jobs:
 
       - name: Compile editorial pipeline
         run: |
-          python -m py_compile src/download_multi.py src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/batch_translate.py src/render_stories.py src/quality_control.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py src/normalize_selection.py
+          python -m py_compile src/download_multi.py src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/batch_translate.py src/indictrans_onnx.py src/render_stories.py src/quality_control.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py src/normalize_selection.py
+
+      - name: Smoke-test free offline Nepali to English translation
+        run: |
+          python - <<'PY'
+          import os
+          from src.indictrans_onnx import IndicTransONNX
+          model = IndicTransONNX(os.environ["INDICTRANS_MODEL"])
+          text = model.translate("संसदको बैठकमा आज महत्वपूर्ण विषयमा छलफल भयो।", src_lang="npi_Deva", tgt_lang="eng_Latn")
+          print("Offline translation smoke test:", text)
+          if not text or not any("A" <= ch <= "Z" or "a" <= ch <= "z" for ch in text):
+              raise RuntimeError("Offline translation backend did not produce English output.")
+          PY
 
       - name: Discover both Parliament Houses
         run: |
