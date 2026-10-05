@@ -40,6 +40,7 @@ class IndicTransONNX:
     ) -> None:
         import onnxruntime as ort
         from tokenizers import Tokenizer
+        from IndicTransToolkit import IndicProcessor
 
         model_path = str(model_path)
         if "/" in model_path and not Path(model_path).exists():
@@ -63,6 +64,7 @@ class IndicTransONNX:
             self._materialized_dir = materialized
 
         self._providers = providers or ["CPUExecutionProvider"]
+        self._ip = IndicProcessor(inference=True)
 
         self._src_tok = Tokenizer.from_file(str(snap / "tokenizer_src.json"))
         self._tgt_tok = Tokenizer.from_file(str(snap / "tokenizer_tgt.json"))
@@ -98,10 +100,14 @@ class IndicTransONNX:
         if not text.strip():
             return ""
 
-        # The ONNX export expects the language tags literally prepended to
-        # the source text. Do not run IndicProcessor here: this public ONNX
-        # tokenizer/export already handles the expected token format.
-        prefixed = f"{src_lang} {tgt_lang} {text}"
+        # Use the official IndicProcessor path. IndicTrans2 uses a shared
+        # Devanagari representation internally and requires preprocessing
+        # before tokenization and postprocessing after decoding.
+        if hasattr(self._ip, "_placeholder_entity_maps"):
+            self._ip._placeholder_entity_maps.queue.clear()
+        prefixed = self._ip.preprocess_batch(
+            [text], src_lang=src_lang, tgt_lang=tgt_lang
+        )[0]
         encoded = self._src_tok.encode(prefixed)
 
         input_ids = np.array(
@@ -155,4 +161,5 @@ class IndicTransONNX:
             i if i < self._meta["tgt_dict_size"] else self._meta["unk_id"]
             for i in output_ids
         ]
-        return self._tgt_tok.decode(safe_ids, skip_special_tokens=True)
+        raw_decoded = self._tgt_tok.decode(safe_ids, skip_special_tokens=True)
+        return self._ip.postprocess_batch([raw_decoded], lang=tgt_lang)[0]
