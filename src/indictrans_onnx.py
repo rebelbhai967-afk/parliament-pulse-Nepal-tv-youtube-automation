@@ -11,6 +11,8 @@ import json
 import logging
 from pathlib import Path
 from typing import Union
+import shutil
+import tempfile
 
 import numpy as np
 
@@ -46,6 +48,20 @@ class IndicTransONNX:
             model_path = snapshot_download(repo_id=model_path)
 
         snap = Path(model_path)
+        # Hugging Face snapshots may use symlinks into the shared blob cache.
+        # ONNX Runtime validates external-data files against the real model
+        # directory and can reject those symlinked paths as escaping the model
+        # directory. Materialize the snapshot into a normal local directory so
+        # each .onnx file and its matching .onnx.data file live together.
+        self._materialized_dir: Path | None = None
+        if snap.exists() and snap.is_dir():
+            materialized = Path(tempfile.mkdtemp(prefix="indictrans2-onnx-"))
+            for src in snap.iterdir():
+                if src.is_file():
+                    shutil.copy2(src, materialized / src.name, follow_symlinks=True)
+            snap = materialized
+            self._materialized_dir = materialized
+
         self._providers = providers or ["CPUExecutionProvider"]
 
         self._src_tok = Tokenizer.from_file(str(snap / "tokenizer_src.json"))
