@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Small, self-contained IndicTrans2 ONNX inference helper.
+"""Self-contained IndicTrans2 ONNX inference helper.
 
-Uses the community ONNX export of AI4Bharat IndicTrans2's distilled 200M
-Indic->English model. The model is downloaded from Hugging Face and cached
-locally; no paid translation API or API key is required.
+Uses the public MIT-licensed ONNX export of AI4Bharat IndicTrans2's
+Indic-to-English model. No paid translation API or API key is required.
 """
 
 from __future__ import annotations
@@ -39,25 +38,23 @@ class IndicTransONNX:
     ) -> None:
         import onnxruntime as ort
         from tokenizers import Tokenizer
-        from IndicTransToolkit import IndicProcessor
 
         model_path = str(model_path)
         if "/" in model_path and not Path(model_path).exists():
             from huggingface_hub import snapshot_download
-            logger.info("Downloading translation model %s ...", model_path)
+            logger.info("Downloading snapshot for %s ...", model_path)
             model_path = snapshot_download(repo_id=model_path)
 
         snap = Path(model_path)
         self._providers = providers or ["CPUExecutionProvider"]
-        self._ip = IndicProcessor(inference=True)
 
         self._src_tok = Tokenizer.from_file(str(snap / "tokenizer_src.json"))
         self._tgt_tok = Tokenizer.from_file(str(snap / "tokenizer_tgt.json"))
-        self._meta = json.loads(
+        self._meta: dict = json.loads(
             (snap / "tokenizer_meta.json").read_text(encoding="utf-8")
         )
 
-        gen_cfg = {}
+        gen_cfg: dict = {}
         gen_path = snap / "generation_config.json"
         if gen_path.exists():
             gen_cfg = json.loads(gen_path.read_text(encoding="utf-8"))
@@ -85,12 +82,10 @@ class IndicTransONNX:
         if not text.strip():
             return ""
 
-        if hasattr(self._ip, "_placeholder_entity_maps"):
-            self._ip._placeholder_entity_maps.queue.clear()
-
-        prefixed = self._ip.preprocess_batch(
-            [text], src_lang=src_lang, tgt_lang=tgt_lang
-        )[0]
+        # The ONNX export expects the language tags literally prepended to
+        # the source text. Do not run IndicProcessor here: this public ONNX
+        # tokenizer/export already handles the expected token format.
+        prefixed = f"{src_lang} {tgt_lang} {text}"
         encoded = self._src_tok.encode(prefixed)
 
         input_ids = np.array(
@@ -109,7 +104,7 @@ class IndicTransONNX:
 
         decoder_input_ids = np.array([[self._decoder_start_id]], dtype=np.int64)
         output_ids = [self._decoder_start_id]
-        past_outputs = None
+        past_outputs: list[np.ndarray] | None = None
 
         for step in range(max_new_tokens):
             if step == 0:
@@ -122,6 +117,7 @@ class IndicTransONNX:
                     },
                 )
             else:
+                assert past_outputs is not None
                 dec_out = self._dec_past.run(
                     None,
                     {
@@ -143,9 +139,4 @@ class IndicTransONNX:
             i if i < self._meta["tgt_dict_size"] else self._meta["unk_id"]
             for i in output_ids
         ]
-        raw_decoded = self._tgt_tok.decode(
-            safe_ids, skip_special_tokens=True
-        )
-        return self._ip.postprocess_batch(
-            [raw_decoded], lang=tgt_lang
-        )[0]
+        return self._tgt_tok.decode(safe_ids, skip_special_tokens=True)
