@@ -30,17 +30,19 @@ def transcribe_video(model, video_path, output_path):
     run_ffmpeg(video, audio_path)
 
     beam_size = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
-    temperature = float(os.getenv("WHISPER_TEMPERATURE", "0.0"))
-    print(f"Whisper: large-v3-turbo / int8 / beam={beam_size}")
+    temperature = os.getenv("WHISPER_TEMPERATURE", "0.0")
+    temperature_value = float(temperature)
+    temperatures = [temperature_value, 0.2, 0.4] if temperature_value == 0.0 else temperature_value
+    print(f"Whisper: large-v3-turbo / int8 / beam={beam_size} / temperature={temperatures}")
 
     segments, info = model.transcribe(
         str(audio_path),
         language="ne",
         task="transcribe",
         beam_size=beam_size,
-        temperature=temperature,
+        temperature=temperatures,
         condition_on_previous_text=False,
-        compression_ratio_threshold=2.4,
+        compression_ratio_threshold=2.0,
         log_prob_threshold=-1.0,
         no_speech_threshold=0.6,
         vad_filter=True,
