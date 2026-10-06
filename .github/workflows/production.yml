@@ -111,6 +111,10 @@ jobs:
               raise RuntimeError(f"Need at least 8 distinct source videos; found {len(items)}")
           if len(houses) < 2:
               raise RuntimeError("Both Parliament Houses are required.")
+          counts = {house: sum(1 for x in items if x.get("house") == house) for house in houses}
+          print("Videos by House:", counts)
+          if any(counts.get(h, 0) < 3 for h in ("House of Representatives", "National Assembly")):
+              raise RuntimeError(f"Need at least 3 source videos from each House; found {counts}")
           if len(set(pages)) != len(pages):
               raise RuntimeError("Duplicate source pages detected.")
           PY
