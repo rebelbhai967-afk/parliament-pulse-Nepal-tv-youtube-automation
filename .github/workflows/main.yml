@@ -39,11 +39,14 @@ jobs:
           import json
           with open("data/videos.json", "r", encoding="utf-8") as file:
               collections = json.load(file)
+          if not isinstance(collections, dict):
+              raise RuntimeError("Discovery output has an unexpected format.")
+          collections = collections.get("collections", [])
           print("Parliament collections found:", len(collections))
           if not collections:
               raise RuntimeError("No Parliament collections found.")
           for index, item in enumerate(collections[:10], start=1):
-              print(f"{index}. {item.get('title', '')}")
+              print(f"{index}. {item.get('house', '')} | {item.get('title', '')}")
               print(item.get('url', ''))
           PY
 
@@ -54,6 +57,9 @@ jobs:
           import subprocess
           with open("data/videos.json", "r", encoding="utf-8") as file:
               collections = json.load(file)
+          if not isinstance(collections, dict):
+              raise RuntimeError("Discovery output has an unexpected format.")
+          collections = collections.get("collections", [])
           if not collections:
               raise RuntimeError("No Parliament collection available.")
           collection_url = collections[0]["url"]
