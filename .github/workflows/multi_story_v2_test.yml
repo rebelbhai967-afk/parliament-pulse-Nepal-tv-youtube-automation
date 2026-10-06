@@ -2,9 +2,6 @@ name: Parliament Pulse Nepal Multi-Story V2 Test
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "30 2 * * *"
-      timezone: "Asia/Kathmandu"
 
 concurrency:
   group: parliament-pulse-v2-test
