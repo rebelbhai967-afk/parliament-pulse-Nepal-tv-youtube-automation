@@ -24,11 +24,12 @@ permissions:
 jobs:
   production-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 360
     env:
       WHISPER_BEAM_SIZE: "5"
       WHISPER_TEMPERATURE: "0.0"
       WHISPER_CPU_THREADS: "2"
+      INDICTRANS_MODEL: "hari31416/indictrans2-ind-en-dist-200M-ONNX-fp16"
       YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
       YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
 
@@ -59,7 +60,7 @@ jobs:
 
       - name: Compile production pipeline
         run: |
-          python -m py_compile             src/download_multi.py             src/batch_transcribe.py             src/batch_analyze_v2.py             src/editorial_hooks.py             src/normalize_selection.py             src/batch_translate.py             src/generate_metadata_v2.py             src/validate_metadata.py             src/editorial_gate.py             src/editorial_review.py             src/content_ledger.py             src/render_stories.py             src/assemble_stories.py             src/generate_thumbnails_v2.py             src/quality_control.py             src/youtube_upload.py             src/upload_youtube_batch.py
+          python -m py_compile             src/download_multi.py             src/batch_transcribe.py             src/batch_analyze_v2.py             src/editorial_hooks.py             src/normalize_selection.py             src/batch_translate.py             src/indictrans_onnx.py             src/generate_metadata_v2.py             src/validate_metadata.py             src/editorial_gate.py             src/editorial_review.py             src/content_ledger.py             src/render_stories.py             src/assemble_stories.py             src/generate_thumbnails_v2.py             src/quality_control.py             src/youtube_upload.py             src/upload_youtube_batch.py
 
       - name: Discover both Parliament Houses
         run: |
@@ -111,7 +112,7 @@ jobs:
       - name: Translate subtitles and topic summaries
         run: |
           mkdir -p data/subtitles_v2
-          python src/batch_translate.py             data/transcripts_clean             data/subtitles_v2             data/subtitles_v2/topic_summaries.json
+          python src/batch_translate.py             data/transcripts_clean             data/subtitles_v2             data/subtitles_v2/topic_summaries.json             data/multi_story_selection.json
 
       - name: Generate English-first metadata
         run: |
@@ -148,7 +149,7 @@ jobs:
 
       - name: Automated quality control
         run: |
-          python src/quality_control.py             data/multi_story_selection.json             output/multi_story_masters             output/multi_story_thumbnails
+          python src/quality_control.py             data/multi_story_selection.json             output/multi_story_masters             output/multi_story_thumbnails             data/subtitles_v2
 
       - name: Verify exact daily target and House coverage
         run: |
