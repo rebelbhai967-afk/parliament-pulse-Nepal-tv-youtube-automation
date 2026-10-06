@@ -60,6 +60,29 @@ COMMON_NEPALI = {
     "लागि","मार्फत","सम्बन्धी","बारेमा","भित्र","बाहिर","समय","आज","भोलि"
 }
 
+def looks_hallucinated_nepali(text):
+    """Reject obvious Whisper repetition/hallucination artifacts."""
+    value = clean(text)
+    if not value:
+        return True
+    if re.search(r"([\u0900-\u097F])\1{5,}", value):
+        return True
+    tokens = [t.strip(".,!?;:।") for t in value.split() if t.strip(".,!?;:।")]
+    if len(tokens) >= 12:
+        counts = {}
+        for token in tokens:
+            counts[token] = counts.get(token, 0) + 1
+        most_common = max(counts.values(), default=0)
+        if most_common >= 6 and most_common / len(tokens) >= 0.30:
+            return True
+    for token in tokens:
+        if len(token) >= 10:
+            for size in (2, 3, 4):
+                pattern = token[:size]
+                if pattern and token.count(pattern) >= 4:
+                    return True
+    return False
+
 def transcript_quality_penalty(text, avg_logprob=None):
     text = clean(text)
     dev = len(re.findall(r"[\u0900-\u097F]", text))
@@ -183,6 +206,8 @@ def build_long_windows(segments, max_windows=3):
             avg_logprob = sum(logs) / len(logs) if logs else None
             if avg_logprob is not None and avg_logprob < -0.95:
                 continue
+            if looks_hallucinated_nepali(text):
+                continue
             windows.append({
                 "start": round(start, 3), "end": round(end, 3),
                 "duration": round(end - start, 3),
@@ -221,6 +246,8 @@ def main(input_dir, output_file):
             if not clean(seg.get("nepali")):
                 continue
             c = build_candidate(segments, i)
+            if looks_hallucinated_nepali(c.get("text", "")):
+                continue
             if c["duration"] < 60 or c["duration"] > 180:
                 continue
             if c.get("avg_logprob") is not None and c["avg_logprob"] < -0.95:
@@ -280,6 +307,8 @@ def main(input_dir, output_file):
         if c["video"] in used:
             continue
         text_value = clean(c.get("text", ""))
+        if looks_hallucinated_nepali(text_value):
+            continue
         if len(text_value) < 80:
             continue
         if c.get("avg_logprob") is not None and c["avg_logprob"] < -0.95:
