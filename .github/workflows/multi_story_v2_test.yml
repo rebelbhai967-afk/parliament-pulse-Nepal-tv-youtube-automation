@@ -15,7 +15,7 @@ jobs:
       WHISPER_BEAM_SIZE: "1"
       WHISPER_TEMPERATURE: "0.0"
       WHISPER_CPU_THREADS: "2"
-      INDICTRANS_MODEL: "hari31416/indictrans2-indic-en-dist-200M-ONNX-int8"
+      INDICTRANS_MODEL: "hari31416/indictrans2-indic-en-dist-200M-ONNX-fp16"
 
     steps:
       - name: Checkout repository
@@ -56,8 +56,17 @@ jobs:
           model = IndicTransONNX(os.environ["INDICTRANS_MODEL"])
           text = model.translate("संसदको बैठकमा आज महत्वपूर्ण विषयमा छलफल भयो।", src_lang="npi_Deva", tgt_lang="eng_Latn")
           print("Offline translation smoke test:", text)
-          if not text or not any("A" <= ch <= "Z" or "a" <= ch <= "z" for ch in text):
-              raise RuntimeError("Offline translation backend did not produce English output.")
+          import re
+          letters = [ch for ch in text if ch.isalpha()]
+          latin = [ch for ch in letters if ("A" <= ch <= "Z") or ("a" <= ch <= "z")]
+          if not text or len(latin) < 8 or (letters and len(latin) / len(letters) < 0.55):
+              raise RuntimeError("Offline translation backend did not produce valid English output.")
+          for token in re.findall(r"[A-Za-z]{16,}", text):
+              lowered = token.lower()
+              for size in range(3, 7):
+                  chunks = [lowered[i:i + size] for i in range(0, len(lowered) - size + 1)]
+                  if any(lowered.count(chunk) >= 3 for chunk in set(chunks)):
+                      raise RuntimeError(f"Offline translation smoke test produced garbled output: {token}")
           PY
 
       - name: Discover both Parliament Houses
