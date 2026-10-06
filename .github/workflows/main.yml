@@ -1,10 +1,7 @@
-name: Parliament Pulse Nepal Automation
+name: Parliament Pulse Nepal Legacy Automation (Manual)
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 18 * * *"
-      timezone: "Asia/Kathmandu"
 
 jobs:
   daily-parliament-automation:
