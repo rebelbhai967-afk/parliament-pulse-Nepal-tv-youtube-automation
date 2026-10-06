@@ -126,6 +126,25 @@ def _validate_english(english, label):
     if len(letters) >= 12 and len(latin) / len(letters) < 0.55:
         raise RuntimeError(f"Translation appears non-English for {label}")
 
+    words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", english.lower())
+    if len(words) >= 12:
+        counts = {}
+        for word in words:
+            counts[word] = counts.get(word, 0) + 1
+        most_common = max(counts.values(), default=0)
+        if most_common >= 6 and most_common / len(words) >= 0.30:
+            raise RuntimeError(f"Translation appears repetitive for {label}")
+
+    common = {
+        "the", "of", "to", "and", "in", "for", "is", "are", "was", "were",
+        "that", "this", "with", "on", "from", "as", "by", "be", "will",
+        "government", "parliament", "minister", "member", "question",
+        "answer", "committee", "bill", "budget", "meeting", "today",
+    }
+    common_hits = sum(1 for word in words if word in common)
+    if len(words) >= 14 and common_hits < 2:
+        raise RuntimeError(f"Translation lacks basic English structure for {label}")
+
     # Reject obvious translation corruption such as PROFRIBESTRIBSTRIB.
     # Repeated 3-6 character chunks 3+ times inside a long token are highly
     # unlikely in normal English and should fail closed before subtitles ship.
