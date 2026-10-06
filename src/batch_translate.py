@@ -122,7 +122,7 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
 
     model_name = os.environ.get(
         "INDICTRANS_MODEL",
-        "hari31416/indictrans2-indic-en-dist-200M-ONNX-int8",
+        "hari31416/indictrans2-indic-en-dist-200M-ONNX-fp16",
     )
     print(f"Loading free offline translation model: {model_name}")
     from indictrans_onnx import IndicTransONNX
