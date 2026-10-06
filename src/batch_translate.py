@@ -51,28 +51,74 @@ def _overlaps_selected(seg_start, seg_end, ranges):
 
 
 def _translate_with_backoff(text, label, translator):
-    """Translate locally with IndicTrans2; no remote translation API."""
+    """Translate locally with IndicTrans2; no remote translation API.
+
+    Long parliamentary transcript segments can push the ONNX decoder into a
+    degenerate repetition loop. Keep each model input bounded and translate
+    sentence-aware chunks, then join them back into one subtitle string.
+    """
     if not text:
         raise RuntimeError(f"Empty translation input for {label}")
-    last_error = None
-    for attempt in range(3):
-        try:
-            result = translator.translate(
-                text,
-                src_lang="npi_Deva",
-                tgt_lang="eng_Latn",
-                max_new_tokens=128,
-            ).strip()
-            if not result:
-                raise RuntimeError("Local translation returned empty text")
-            return result
-        except Exception as exc:
-            last_error = exc
-            if attempt < 2:
-                wait = 5 * (attempt + 1)
-                print(f"Local translation retry {attempt + 1}/3 for {label}; waiting {wait}s")
-                time.sleep(wait)
-    raise RuntimeError(f"English translation failed for {label}: {last_error}") from last_error
+
+    max_chars = int(os.environ.get("INDICTRANS_MAX_INPUT_CHARS", "220"))
+
+    def split_chunks(value):
+        value = " ".join(value.split()).strip()
+        if len(value) <= max_chars:
+            return [value]
+        pieces = []
+        remaining = value
+        while len(remaining) > max_chars:
+            cut = -1
+            for marker in ("।", "?", "!", ".", ";", ":", ","):
+                pos = remaining.rfind(marker, 0, max_chars + 1)
+                if pos > cut:
+                    cut = pos
+            if cut < max_chars // 2:
+                space = remaining.rfind(" ", 0, max_chars + 1)
+                cut = space if space > max_chars // 2 else max_chars - 1
+            piece = remaining[:cut + 1].strip()
+            if not piece:
+                piece = remaining[:max_chars].strip()
+            pieces.append(piece)
+            remaining = remaining[len(piece):].strip()
+        if remaining:
+            pieces.append(remaining)
+        return pieces
+
+    chunks = split_chunks(text)
+    translated_parts = []
+    for chunk_no, chunk in enumerate(chunks, 1):
+        chunk_label = label if len(chunks) == 1 else f"{label} chunk {chunk_no}"
+        last_error = None
+        for attempt in range(3):
+            try:
+                result = translator.translate(
+                    chunk,
+                    src_lang="npi_Deva",
+                    tgt_lang="eng_Latn",
+                    max_new_tokens=96,
+                ).strip()
+                if not result:
+                    raise RuntimeError("Local translation returned empty text")
+                _validate_english(result, chunk_label)
+                translated_parts.append(result)
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt < 2:
+                    wait = 5 * (attempt + 1)
+                    print(
+                        f"Local translation retry {attempt + 1}/3 for "
+                        f"{chunk_label}; waiting {wait}s"
+                    )
+                    time.sleep(wait)
+        else:
+            raise RuntimeError(
+                f"English translation failed for {chunk_label}: {last_error}"
+            ) from last_error
+
+    return " ".join(translated_parts).strip()
 
 def _validate_english(english, label):
     letters = [ch for ch in english if ch.isalpha()]
