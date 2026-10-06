@@ -17,7 +17,17 @@ def run_upload(video, item, client_secret, token, privacy, publish_at):
     ]
     if publish_at:
         command += ["--publish-at", publish_at]
-    subprocess.run(command, check=True)
+    result = subprocess.run(command, check=True, capture_output=True, text=True)
+    marker = "=== YouTube Upload Result ==="
+    output = result.stdout or ""
+    if marker not in output:
+        raise RuntimeError(f"YouTube upload returned no API result for {video}")
+    raw = output.split(marker, 1)[1].strip()
+    try:
+        response = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Could not parse YouTube upload response for {video}: {exc}") from exc
+    return response
 
 
 def main(masters, metadata_dir, client_secret, token, privacy, kind, publish_at):
@@ -33,8 +43,18 @@ def main(masters, metadata_dir, client_secret, token, privacy, kind, publish_at)
             raise FileNotFoundError(video)
 
         print(f"\n=== YouTube {kind.upper()} {index:02d} ===")
-        run_upload(video, item, client_secret, token, privacy, publish_at)
-        results.append({"index": index, "video": str(video), "status": "uploaded"})
+        response = run_upload(video, item, client_secret, token, privacy, publish_at)
+        results.append({
+            "index": index,
+            "video": str(video),
+            "status": "uploaded_private_scheduled" if publish_at else "uploaded",
+            "youtube_video_id": response.get("id"),
+            "youtube_url": (
+                f"https://www.youtube.com/watch?v={response.get('id')}"
+                if response.get("id") else ""
+            ),
+            "publish_at": publish_at or "",
+        })
 
     (masters / f"youtube_{kind}_upload_report.json").write_text(
         json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
