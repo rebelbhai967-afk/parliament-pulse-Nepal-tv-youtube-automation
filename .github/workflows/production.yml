@@ -60,7 +60,7 @@ jobs:
 
       - name: Compile production pipeline
         run: |
-          python -m py_compile             src/download_multi.py             src/batch_transcribe.py             src/batch_analyze_v2.py             src/editorial_hooks.py             src/normalize_selection.py             src/batch_translate.py             src/indictrans_onnx.py             src/generate_metadata_v2.py             src/validate_metadata.py             src/editorial_gate.py             src/editorial_review.py             src/content_ledger.py             src/render_stories.py             src/assemble_stories.py             src/generate_thumbnails_v2.py             src/quality_control.py             src/youtube_upload.py             src/upload_youtube_batch.py
+          python -m py_compile             src/download_multi.py             src/batch_transcribe.py             src/batch_analyze_v2.py             src/editorial_hooks.py             src/normalize_selection.py             src/batch_translate.py             src/indictrans_onnx.py             src/generate_metadata_v2.py             src/validate_metadata.py             src/editorial_gate.py             src/editorial_review.py             src/content_ledger.py             src/render_stories.py             src/assemble_stories.py             src/generate_thumbnails_v2.py             src/quality_control.py             src/youtube_upload.py             src/upload_youtube_batch.py             src/verify_youtube.py
 
       - name: Smoke-test free offline Nepali to English translation
         run: |
@@ -270,6 +270,13 @@ jobs:
           printf '%s' "$CLIENT_SECRET" > client_secret.json
           printf '%s' "$TOKEN_JSON" > token.json
           python src/upload_youtube_batch.py             output/multi_story_masters             data/metadata_v2             --client-secret client_secret.json             --token token.json             --privacy private             --kind short             --publish-at "$SHORT_PUBLISH_AT"
+
+      - name: Verify YouTube uploads and schedules
+        env:
+          TOKEN_JSON: ${{ env.YOUTUBE_TOKEN_JSON }}
+        run: |
+          printf '%s' "$TOKEN_JSON" > token.json
+          python src/verify_youtube.py output/multi_story_masters --token token.json
 
       - name: Remove OAuth files
         if: always()
