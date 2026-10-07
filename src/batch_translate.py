@@ -50,7 +50,7 @@ def _overlaps_selected(seg_start, seg_end, ranges):
 
 
 
-def _translate_with_backoff(text, label, translator, fallback_translator=None):
+def _translate_with_backoff(text, label, translator, fallback_loader=None):
     """Translate locally with IndicTrans2; no remote translation API.
 
     Long parliamentary transcript segments can push the ONNX decoder into a
@@ -111,9 +111,10 @@ def _translate_with_backoff(text, label, translator, fallback_translator=None):
                     "appears garbled", "appears repetitive",
                     "lacks basic English structure", "appears non-English"
                 )):
-                    if fallback_translator is not None:
+                    if fallback_loader is not None:
                         print(f"FP16 quality gate failed for {chunk_label}; trying FP32 fallback.")
                         try:
+                            fallback_translator = fallback_loader()
                             fallback = fallback_translator.translate(
                                 chunk,
                                 src_lang="npi_Deva",
@@ -177,12 +178,12 @@ def _validate_english(english, label):
                 raise RuntimeError(f"Translation appears garbled for {label}: {token}")
 
 
-def _translate_segments(segments, label_prefix, translator, fallback_translator=None):
+def _translate_segments(segments, label_prefix, translator, fallback_loader=None):
     """Translate selected subtitle segments locally, preserving segment order."""
     results = []
     for index, text in segments:
         translated = _translate_with_backoff(
-            text, f"{label_prefix} segment {index + 1}", translator, fallback_translator
+            text, f"{label_prefix} segment {index + 1}", translator, fallback_loader
         )
         _validate_english(
             translated, f"{label_prefix} segment {index + 1}"
@@ -247,7 +248,7 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
             [(i, text) for i, (_, _, text) in enumerate(selected)],
             file.name,
             translator,
-            get_fallback_translator(),
+            get_fallback_translator,
         )
         lines = [
             (selected[i][0], selected[i][1], translated[i])
