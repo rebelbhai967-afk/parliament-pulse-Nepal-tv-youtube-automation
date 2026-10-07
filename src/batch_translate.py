@@ -244,15 +244,58 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
         if not selected:
             raise RuntimeError(f"No selected transcript segments found for {file.name}")
 
+        # Translate with local context instead of feeding tiny Whisper fragments
+        # one-by-one. Short fragments are prone to decoder repetition loops;
+        # grouped subtitle blocks preserve enough sentence context while keeping
+        # the ONNX input safely below its source-token limit.
+        blocks = []
+        block_start = None
+        block_end = None
+        block_parts = []
+        block_chars = 0
+        block_seconds = 0.0
+        max_block_chars = int(os.environ.get("INDICTRANS_BLOCK_CHARS", "420"))
+        max_block_seconds = float(os.environ.get("INDICTRANS_BLOCK_SECONDS", "18"))
+
+        def flush_block():
+            nonlocal block_start, block_end, block_parts, block_chars, block_seconds
+            if block_start is not None and block_parts:
+                blocks.append((
+                    block_start,
+                    block_end,
+                    " ".join(block_parts).strip(),
+                ))
+            block_start = None
+            block_end = None
+            block_parts = []
+            block_chars = 0
+            block_seconds = 0.0
+
+        for seg_start, seg_end, text in selected:
+            proposed_chars = block_chars + len(text) + (1 if block_parts else 0)
+            proposed_seconds = block_seconds + max(0.0, seg_end - seg_start)
+            if block_parts and (
+                proposed_chars > max_block_chars
+                or proposed_seconds > max_block_seconds
+            ):
+                flush_block()
+            if block_start is None:
+                block_start = seg_start
+            block_end = seg_end
+            block_parts.append(text)
+            block_chars += len(text) + (1 if len(block_parts) > 1 else 0)
+            block_seconds += max(0.0, seg_end - seg_start)
+        flush_block()
+
         translated = _translate_segments(
-            [(i, text) for i, (_, _, text) in enumerate(selected)],
+            [(i, text) for i, (_, _, text) in enumerate(blocks)],
             file.name,
             translator,
             get_fallback_translator,
         )
         lines = [
-            (selected[i][0], selected[i][1], translated[i])
-            for i in range(len(selected))
+            (blocks[i][0], blocks[i][1], translated[i])
+            for i in range(len(blocks))
         ]
 
         with target.open("w", encoding="utf-8") as f:
