@@ -50,7 +50,7 @@ def _overlaps_selected(seg_start, seg_end, ranges):
 
 
 
-def _translate_with_backoff(text, label, translator):
+def _translate_with_backoff(text, label, translator, fallback_translator=None):
     """Translate locally with IndicTrans2; no remote translation API.
 
     Long parliamentary transcript segments can push the ONNX decoder into a
@@ -97,26 +97,47 @@ def _translate_with_backoff(text, label, translator):
                     chunk,
                     src_lang="npi_Deva",
                     tgt_lang="eng_Latn",
-                    max_new_tokens=96,
+                    max_new_tokens=128,
                 ).strip()
                 if not result:
                     raise RuntimeError("Local translation returned empty text")
                 _validate_english(result, chunk_label)
                 translated_parts.append(result)
                 break
+            except RuntimeError as exc:
+                last_error = exc
+                message = str(exc)
+                if any(marker in message for marker in (
+                    "appears garbled", "appears repetitive",
+                    "lacks basic English structure", "appears non-English"
+                )):
+                    if fallback_translator is not None:
+                        print(f"FP16 quality gate failed for {chunk_label}; trying FP32 fallback.")
+                        try:
+                            fallback = fallback_translator.translate(
+                                chunk,
+                                src_lang="npi_Deva",
+                                tgt_lang="eng_Latn",
+                                max_new_tokens=128,
+                            ).strip()
+                            _validate_english(fallback, chunk_label + " FP32 fallback")
+                            translated_parts.append(fallback)
+                            break
+                        except Exception as fallback_exc:
+                            last_error = fallback_exc
+                    raise
+                if attempt < 2:
+                    wait = 5 * (attempt + 1)
+                    print(f"Local translation retry {attempt + 1}/3 for {chunk_label}; waiting {wait}s")
+                    time.sleep(wait)
             except Exception as exc:
                 last_error = exc
                 if attempt < 2:
                     wait = 5 * (attempt + 1)
-                    print(
-                        f"Local translation retry {attempt + 1}/3 for "
-                        f"{chunk_label}; waiting {wait}s"
-                    )
+                    print(f"Local translation retry {attempt + 1}/3 for {chunk_label}; waiting {wait}s")
                     time.sleep(wait)
         else:
-            raise RuntimeError(
-                f"English translation failed for {chunk_label}: {last_error}"
-            ) from last_error
+            raise RuntimeError(f"English translation failed for {chunk_label}: {last_error}") from last_error
 
     return " ".join(translated_parts).strip()
 
@@ -156,12 +177,12 @@ def _validate_english(english, label):
                 raise RuntimeError(f"Translation appears garbled for {label}: {token}")
 
 
-def _translate_segments(segments, label_prefix, translator):
+def _translate_segments(segments, label_prefix, translator, fallback_translator=None):
     """Translate selected subtitle segments locally, preserving segment order."""
     results = []
     for index, text in segments:
         translated = _translate_with_backoff(
-            text, f"{label_prefix} segment {index + 1}", translator
+            text, f"{label_prefix} segment {index + 1}", translator, fallback_translator
         )
         _validate_english(
             translated, f"{label_prefix} segment {index + 1}"
@@ -192,6 +213,18 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
     print(f"Loading free offline translation model: {model_name}")
     from indictrans_onnx import IndicTransONNX
     translator = IndicTransONNX(model_name)
+    fallback_translator = None
+    fallback_model = os.environ.get(
+        "INDICTRANS_FALLBACK_MODEL",
+        "hari31416/indictrans2-indic-en-dist-200M-ONNX",
+    )
+
+    def get_fallback_translator():
+        nonlocal fallback_translator
+        if fallback_translator is None:
+            print(f"Loading FP32 fallback translation model: {fallback_model}")
+            fallback_translator = IndicTransONNX(fallback_model)
+        return fallback_translator
 
     for file in files:
         target = out / f"{file.stem}.srt"
@@ -214,6 +247,7 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
             [(i, text) for i, (_, _, text) in enumerate(selected)],
             file.name,
             translator,
+            get_fallback_translator(),
         )
         lines = [
             (selected[i][0], selected[i][1], translated[i])
