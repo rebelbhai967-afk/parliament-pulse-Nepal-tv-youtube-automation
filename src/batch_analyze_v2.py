@@ -148,6 +148,12 @@ def build_candidate(segments, i, min_s=60, max_s=180):
         else:
             right -= 1; end = float(segments[right].get("end", end))
     selected = segments[left:right+1]
+    if any(looks_hallucinated_nepali(clean(s.get("nepali", ""))) for s in selected):
+        return {
+            "start": round(start,3), "end": round(end,3), "duration": round(end-start,3),
+            "score": -9999, "text": "", "hook_text": "", "avg_logprob": -10.0,
+            "max_transcript_gap": 9999.0,
+        }
     text = " ".join(clean(s.get("nepali")) for s in selected)
     opening_text = " ".join(clean(s.get("nepali")) for s in selected[:2])
     logs = [float(s.get("avg_logprob", 0.0)) for s in selected if s.get("avg_logprob") is not None]
@@ -200,7 +206,10 @@ def build_long_windows(segments, max_windows=3):
         start = float(segments[left].get("start", start_target))
         end = float(segments[right].get("end", end_target))
         if 181 <= end - start <= 300:
-            text = " ".join(clean(s.get("nepali")) for s in segments[left:right + 1])
+            window_segments = segments[left:right + 1]
+            if any(looks_hallucinated_nepali(clean(s.get("nepali", ""))) for s in window_segments):
+                continue
+            text = " ".join(clean(s.get("nepali")) for s in window_segments)
             hook_text = " ".join(clean(s.get("nepali")) for s in segments[left:min(left + 2, right + 1)])
             logs = [float(s.get("avg_logprob", 0.0)) for s in segments[left:right + 1] if s.get("avg_logprob") is not None]
             avg_logprob = sum(logs) / len(logs) if logs else None
