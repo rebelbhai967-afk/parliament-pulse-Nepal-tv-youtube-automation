@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Union
 import shutil
 import tempfile
+import os
 
 import numpy as np
 
@@ -89,6 +90,12 @@ class IndicTransONNX:
             str(snap / "decoder_with_past_model.onnx"), providers=self._providers
         )
         self._num_layers = (len(self._dec.get_outputs()) - 1) // 4
+        self._repetition_penalty = float(os.environ.get(
+            "INDICTRANS_REPETITION_PENALTY", "1.10"
+        ))
+        self._no_repeat_ngram = int(os.environ.get(
+            "INDICTRANS_NO_REPEAT_NGRAM", "3"
+        ))
 
     def translate(
         self,
@@ -149,9 +156,31 @@ class IndicTransONNX:
                     },
                 )
 
-            logits = dec_out[0]
+            logits = np.array(dec_out[0][0, -1, :], dtype=np.float32, copy=True)
             past_outputs = list(dec_out[1:])
-            next_id = int(np.argmax(logits[0, -1, :]))
+
+            # Penalize tokens already generated so noisy fragments do not fall
+            # into deterministic repetition loops.
+            penalty = self._repetition_penalty
+            if penalty > 1.0:
+                for token_id in set(output_ids):
+                    if 0 <= token_id < logits.shape[0]:
+                        if logits[token_id] < 0:
+                            logits[token_id] *= penalty
+                        else:
+                            logits[token_id] /= penalty
+
+            # Block an exact repeated n-gram before greedy selection.
+            n = self._no_repeat_ngram
+            if n >= 2 and len(output_ids) >= n - 1:
+                prefix = output_ids[-(n - 1):]
+                for i in range(len(output_ids) - n + 1):
+                    if output_ids[i:i + n - 1] == prefix:
+                        blocked = output_ids[i + n - 1]
+                        if 0 <= blocked < logits.shape[0]:
+                            logits[blocked] = -np.inf
+
+            next_id = int(np.argmax(logits))
             output_ids.append(next_id)
             if next_id == self._eos_id:
                 break
