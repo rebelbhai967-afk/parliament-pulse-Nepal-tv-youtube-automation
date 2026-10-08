@@ -29,7 +29,8 @@ jobs:
       WHISPER_BEAM_SIZE: "5"
       WHISPER_TEMPERATURE: "0.0"
       WHISPER_CPU_THREADS: "2"
-      INDICTRANS_MODEL: "hari31416/indictrans2-indic-en-dist-200M-ONNX-fp16"
+      INDICTRANS_MODEL: "hari31416/indictrans2-indic-en-1B-ONNX-int8"
+      INDICTRANS_FALLBACK_MODEL: "hari31416/indictrans2-indic-en-dist-200M-ONNX"
       YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
       YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
 
