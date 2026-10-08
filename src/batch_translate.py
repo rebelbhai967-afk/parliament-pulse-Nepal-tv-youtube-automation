@@ -142,7 +142,7 @@ def _translate_with_backoff(text, label, translator, fallback_loader=None):
             if fallback_loader is not None:
                 print(
                     f"Translation quality gate failed for {chunk_label}; "
-                    f"trying FP32 fallback."
+                    f"trying stronger 1B INT8 fallback."
                 )
                 fallback_translator = fallback_loader()
                 fallback = fallback_translator.translate(
@@ -152,8 +152,8 @@ def _translate_with_backoff(text, label, translator, fallback_loader=None):
                     max_new_tokens=128,
                 ).strip()
                 if not fallback:
-                    raise RuntimeError("FP32 fallback returned empty text")
-                _validate_english(fallback, chunk_label + " FP32 fallback")
+                    raise RuntimeError("1B INT8 fallback returned empty text")
+                _validate_english(fallback, chunk_label + " 1B INT8 fallback")
                 return fallback
 
             raise
@@ -262,13 +262,13 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
     fallback_translator = None
     fallback_model = os.environ.get(
         "INDICTRANS_FALLBACK_MODEL",
-        "hari31416/indictrans2-indic-en-dist-200M-ONNX",
+        "hari31416/indictrans2-indic-en-1B-ONNX-int8",
     )
 
     def get_fallback_translator():
         nonlocal fallback_translator
         if fallback_translator is None:
-            print(f"Loading FP32 fallback translation model: {fallback_model}")
+            print(f"Loading stronger 1B INT8 fallback translation model: {fallback_model}")
             fallback_translator = IndicTransONNX(fallback_model)
         return fallback_translator
 
