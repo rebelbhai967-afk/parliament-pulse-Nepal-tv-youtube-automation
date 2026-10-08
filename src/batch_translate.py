@@ -88,57 +88,102 @@ def _translate_with_backoff(text, label, translator, fallback_loader=None):
 
     chunks = split_chunks(text)
     translated_parts = []
-    for chunk_no, chunk in enumerate(chunks, 1):
-        chunk_label = label if len(chunks) == 1 else f"{label} chunk {chunk_no}"
-        last_error = None
-        for attempt in range(3):
-            try:
-                result = translator.translate(
+
+    quality_markers = (
+        "appears garbled", "appears repetitive",
+        "lacks basic English structure", "appears non-English"
+    )
+
+    def translate_one(chunk, chunk_label, model, allow_recovery=True):
+        """Translate one chunk, recovering from deterministic decoder collapse.
+
+        ONNX greedy decoding is deterministic, so repeating the same request
+        does not change a repetition failure. Instead, first retry the failed
+        text as two smaller context-preserving pieces. Only then use the
+        heavier fallback model.
+        """
+        try:
+            result = model.translate(
+                chunk,
+                src_lang="npi_Deva",
+                tgt_lang="eng_Latn",
+                max_new_tokens=128,
+            ).strip()
+            if not result:
+                raise RuntimeError("Local translation returned empty text")
+            _validate_english(result, chunk_label)
+            return result
+        except RuntimeError as exc:
+            message = str(exc)
+            if not any(marker in message for marker in quality_markers):
+                raise
+
+            words = chunk.split()
+            if allow_recovery and len(chunk) >= 90 and len(words) >= 10:
+                midpoint = max(1, len(chunk) // 2)
+                cut = chunk.rfind(" ", 0, midpoint)
+                if cut < 35:
+                    cut = chunk.find(" ", midpoint)
+                if 35 <= cut < len(chunk) - 20:
+                    left = chunk[:cut].strip()
+                    right = chunk[cut:].strip()
+                    print(
+                        f"Translation quality gate failed for {chunk_label}; "
+                        f"splitting into two smaller context chunks."
+                    )
+                    left_result = translate_one(
+                        left, chunk_label + "a", model, allow_recovery=False
+                    )
+                    right_result = translate_one(
+                        right, chunk_label + "b", model, allow_recovery=False
+                    )
+                    return f"{left_result} {right_result}".strip()
+
+            if fallback_loader is not None:
+                print(
+                    f"Translation quality gate failed for {chunk_label}; "
+                    f"trying FP32 fallback."
+                )
+                fallback_translator = fallback_loader()
+                fallback = fallback_translator.translate(
                     chunk,
                     src_lang="npi_Deva",
                     tgt_lang="eng_Latn",
                     max_new_tokens=128,
                 ).strip()
-                if not result:
-                    raise RuntimeError("Local translation returned empty text")
-                _validate_english(result, chunk_label)
-                translated_parts.append(result)
+                if not fallback:
+                    raise RuntimeError("FP32 fallback returned empty text")
+                _validate_english(fallback, chunk_label + " FP32 fallback")
+                return fallback
+
+            raise
+
+    for chunk_no, chunk in enumerate(chunks, 1):
+        chunk_label = label if len(chunks) == 1 else f"{label} chunk {chunk_no}"
+        last_error = None
+        for attempt in range(2):
+            try:
+                translated_parts.append(
+                    translate_one(chunk, chunk_label, translator)
+                )
+                last_error = None
                 break
             except RuntimeError as exc:
                 last_error = exc
-                message = str(exc)
-                if any(marker in message for marker in (
-                    "appears garbled", "appears repetitive",
-                    "lacks basic English structure", "appears non-English"
-                )):
-                    if fallback_loader is not None:
-                        print(f"FP16 quality gate failed for {chunk_label}; trying FP32 fallback.")
-                        try:
-                            fallback_translator = fallback_loader()
-                            fallback = fallback_translator.translate(
-                                chunk,
-                                src_lang="npi_Deva",
-                                tgt_lang="eng_Latn",
-                                max_new_tokens=128,
-                            ).strip()
-                            _validate_english(fallback, chunk_label + " FP32 fallback")
-                            translated_parts.append(fallback)
-                            break
-                        except Exception as fallback_exc:
-                            last_error = fallback_exc
+                if attempt == 0 and not any(
+                    marker in str(exc) for marker in quality_markers
+                ):
+                    print(
+                        f"Local translation retry 1/2 for {chunk_label}; "
+                        f"waiting 3s"
+                    )
+                    time.sleep(3)
+                else:
                     raise
-                if attempt < 2:
-                    wait = 5 * (attempt + 1)
-                    print(f"Local translation retry {attempt + 1}/3 for {chunk_label}; waiting {wait}s")
-                    time.sleep(wait)
-            except Exception as exc:
-                last_error = exc
-                if attempt < 2:
-                    wait = 5 * (attempt + 1)
-                    print(f"Local translation retry {attempt + 1}/3 for {chunk_label}; waiting {wait}s")
-                    time.sleep(wait)
-        else:
-            raise RuntimeError(f"English translation failed for {chunk_label}: {last_error}") from last_error
+        if last_error is not None:
+            raise RuntimeError(
+                f"English translation failed for {chunk_label}: {last_error}"
+            ) from last_error
 
     return " ".join(translated_parts).strip()
 
