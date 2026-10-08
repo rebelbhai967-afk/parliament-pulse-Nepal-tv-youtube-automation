@@ -15,7 +15,8 @@ jobs:
       WHISPER_BEAM_SIZE: "1"
       WHISPER_TEMPERATURE: "0.0"
       WHISPER_CPU_THREADS: "2"
-      INDICTRANS_MODEL: "hari31416/indictrans2-indic-en-dist-200M-ONNX-fp16"
+      INDICTRANS_MODEL: "hari31416/indictrans2-indic-en-1B-ONNX-int8"
+      INDICTRANS_FALLBACK_MODEL: "hari31416/indictrans2-indic-en-dist-200M-ONNX"
 
     steps:
       - name: Checkout repository
