@@ -152,6 +152,17 @@ def looks_garbled_english(text):
 
 
 def validate_english_quality(selection, subtitles_dir, errors):
+    """Fail closed on Latin-script transliteration masquerading as English.
+
+    Word-frequency coverage is only a screening heuristic, not proof of meaning.
+    Low-coverage subtitles must be reviewed rather than automatically published.
+    """
+    try:
+        from wordfreq import zipf_frequency
+    except ImportError as exc:
+        errors.append("English subtitle lexical validator unavailable: install wordfreq")
+        return
+
     subtitles = Path(subtitles_dir)
     checked = set()
     for kind in ("long", "short"):
@@ -170,6 +181,24 @@ def validate_english_quality(selection, subtitles_dir, errors):
                 text = path.read_text(encoding="utf-8", errors="replace")
                 if looks_garbled_english(text):
                     errors.append(f"{kind.title()} {i}: garbled English subtitle detected in {stem}")
+                    continue
+
+                words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", text.lower())
+                # Short function words and ordinary English words should dominate
+                # a genuine English translation. Rare names/terms are tolerated,
+                # but extensive phonetic Nepali transliteration is not.
+                eligible = [word for word in words if len(word) >= 3]
+                if len(eligible) < 12:
+                    errors.append(f"{kind.title()} {i}: too little English subtitle text to validate in {stem}")
+                    continue
+                known = sum(1 for word in eligible if zipf_frequency(word, "en") >= 2.5)
+                ratio = known / len(eligible)
+                print(f"English lexical coverage {stem}: {known}/{len(eligible)} = {ratio:.2f}")
+                if ratio < 0.62:
+                    errors.append(
+                        f"{kind.title()} {i}: subtitle English lexical coverage is too low in {stem} "
+                        f"({ratio:.2f}; minimum 0.62); likely transliteration or garbled translation"
+                    )
 
 
 def clean_list(values):
@@ -334,9 +363,22 @@ def main(selection_path, masters_dir, thumbnails_dir, subtitles_dir):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 5:
+    if len(sys.argv) == 4 and sys.argv[1] == "--subtitles-only":
+        selection = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+        errors = []
+        validate_subtitles(selection, sys.argv[3], errors)
+        validate_english_quality(selection, sys.argv[3], errors)
+        if errors:
+            print("SUBTITLE QUALITY FAILED")
+            for error in errors:
+                print(f"- {error}")
+            raise SystemExit(1)
+        print("SUBTITLE LEXICAL SCREEN PASSED; this is not a substitute for human review.")
+    elif len(sys.argv) == 5:
+        main(*sys.argv[1:])
+    else:
         raise SystemExit(
-            "Usage: python src/quality_control.py "
-            "<selection_json> <masters_dir> <thumbnails_dir> <subtitles_dir>"
+            "Usage: python src/quality_control.py <selection_json> <masters_dir> "
+            "<thumbnails_dir> <subtitles_dir>\n"
+            "   or: python src/quality_control.py --subtitles-only <selection_json> <subtitles_dir>"
         )
-    main(*sys.argv[1:])
