@@ -13,6 +13,11 @@ on:
         options:
           - morning
           - evening
+      subtitles_reviewed:
+        description: "Confirm you reviewed the latest V2 English subtitles and approve publishing this production run"
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: parliament-pulse-production
@@ -42,6 +47,16 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
+
+      - name: Require explicit subtitle quality approval before spending runner time
+        env:
+          SUBTITLES_REVIEWED: ${{ inputs.subtitles_reviewed }}
+        run: |
+          if [ "$SUBTITLES_REVIEWED" != "true" ]; then
+            echo "::error::Production blocked. Review the latest V2 artifact subtitles for mistranslation, transliteration, and factual meaning; then rerun with subtitles_reviewed=true."
+            exit 1
+          fi
+          echo "Explicit subtitle review approval received."
 
       - name: Verify YouTube publishing credentials
         run: |
