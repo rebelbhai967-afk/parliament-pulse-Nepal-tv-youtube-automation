@@ -11,3 +11,4 @@ huggingface-hub
 
 indictranstoolkit
 transformers==4.57.6
+wordfreq
