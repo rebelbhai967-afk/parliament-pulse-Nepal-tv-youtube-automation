@@ -159,6 +159,10 @@ jobs:
           mkdir -p data/subtitles_v2
           python src/batch_translate.py             data/transcripts_clean             data/subtitles_v2             data/subtitles_v2/topic_summaries.json             data/multi_story_selection.json
 
+      - name: Run early English subtitle quality screen
+        run: |
+          python src/quality_control.py --subtitles-only data/multi_story_selection.json data/subtitles_v2
+
       - name: Generate English-first metadata
         run: |
           mkdir -p data/metadata_v2
