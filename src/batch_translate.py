@@ -91,7 +91,8 @@ def _translate_with_backoff(text, label, translator, fallback_loader=None):
 
     quality_markers = (
         "appears garbled", "appears repetitive",
-        "lacks basic English structure", "appears non-English"
+        "lacks basic English structure", "appears non-English",
+        "low English lexical coverage"
     )
 
     def translate_one(chunk, chunk_label, model, allow_recovery=True):
@@ -194,6 +195,22 @@ def _validate_english(english, label):
         raise RuntimeError(f"Translation appears non-English for {label}")
 
     words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", english.lower())
+    # Detect phonetic Nepali transliteration while translation is still at the
+    # segment level, so the configured fallback can retry before SRT assembly.
+    if len(words) >= 16:
+        try:
+            from wordfreq import zipf_frequency
+            eligible = [word for word in words if len(word) >= 3]
+            if len(eligible) >= 12:
+                known = sum(1 for word in eligible if zipf_frequency(word, "en") >= 2.5)
+                coverage = known / len(eligible)
+                if coverage < 0.50:
+                    raise RuntimeError(
+                        f"Translation has low English lexical coverage for {label} ({coverage:.2f})"
+                    )
+        except ImportError:
+            pass
+
     if len(words) >= 12:
         counts = {}
         for word in words:
