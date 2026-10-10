@@ -202,16 +202,10 @@ def _validate_english(english, label):
         if most_common >= 6 and most_common / len(words) >= 0.30:
             raise RuntimeError(f"Translation appears repetitive for {label}")
 
-    common = {
-        "the", "of", "to", "and", "in", "for", "is", "are", "was", "were",
-        "that", "this", "with", "on", "from", "as", "by", "be", "will",
-        "government", "parliament", "minister", "member", "question",
-        "answer", "committee", "bill", "budget", "meeting", "today",
-    }
-    common_hits = sum(1 for word in words if word in common)
-    if len(words) >= 14 and common_hits < 2:
-        raise RuntimeError(f"Translation lacks basic English structure for {label}")
-
+    # Do not reject a translation solely because it lacks a tiny hard-coded
+    # list of English function words. Parliamentary fragments, names, and
+    # short clauses can be valid English without those tokens. The later
+    # subtitle lexical-coverage gate screens for transliteration/garbling.
     # Reject obvious translation corruption such as PROFRIBESTRIBSTRIB.
     # Repeated 3-6 character chunks 3+ times inside a long token are highly
     # unlikely in normal English and should fail closed before subtitles ship.
