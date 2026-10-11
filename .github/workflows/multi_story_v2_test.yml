@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - ".github/run-v2-test"
+      - ".github/workflows/multi_story_v2_test.yml"
 
 concurrency:
   group: parliament-pulse-v2-test
