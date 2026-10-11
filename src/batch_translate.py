@@ -119,6 +119,33 @@ def _translate_with_backoff(text, label, translator, fallback_loader=None):
             if not any(marker in message for marker in quality_markers):
                 raise
 
+            # Try the configured fallback on the complete context before splitting.
+            # Splitting first can remove context needed for a correct English subtitle.
+            if fallback_loader is not None:
+                try:
+                    print(
+                        f"Translation quality gate failed for {chunk_label}; "
+                        "trying configured fallback on full context."
+                    )
+                    fallback_translator = fallback_loader()
+                    fallback = fallback_translator.translate(
+                        chunk,
+                        src_lang="npi_Deva",
+                        tgt_lang="eng_Latn",
+                        max_new_tokens=128,
+                    ).strip()
+                    if not fallback:
+                        raise RuntimeError("Configured fallback returned empty text")
+                    _validate_english(fallback, chunk_label + " fallback")
+                    return fallback
+                except RuntimeError as fallback_error:
+                    if not any(marker in str(fallback_error) for marker in quality_markers):
+                        raise
+                    print(
+                        f"Fallback quality gate failed for {chunk_label}; "
+                        "trying smaller chunks as a last recovery."
+                    )
+
             words = chunk.split()
             if allow_recovery and len(chunk) >= 90 and len(words) >= 10:
                 midpoint = max(1, len(chunk) // 2)
@@ -130,7 +157,7 @@ def _translate_with_backoff(text, label, translator, fallback_loader=None):
                     right = chunk[cut:].strip()
                     print(
                         f"Translation quality gate failed for {chunk_label}; "
-                        f"splitting into two smaller context chunks."
+                        "splitting into two smaller context chunks."
                     )
                     left_result = translate_one(
                         left, chunk_label + "a", model, allow_recovery=False
@@ -139,23 +166,6 @@ def _translate_with_backoff(text, label, translator, fallback_loader=None):
                         right, chunk_label + "b", model, allow_recovery=False
                     )
                     return f"{left_result} {right_result}".strip()
-
-            if fallback_loader is not None:
-                print(
-                    f"Translation quality gate failed for {chunk_label}; "
-                    f"trying the configured fallback model."
-                )
-                fallback_translator = fallback_loader()
-                fallback = fallback_translator.translate(
-                    chunk,
-                    src_lang="npi_Deva",
-                    tgt_lang="eng_Latn",
-                    max_new_tokens=128,
-                ).strip()
-                if not fallback:
-                    raise RuntimeError("1B INT8 fallback returned empty text")
-                _validate_english(fallback, chunk_label + " 1B INT8 fallback")
-                return fallback
 
             raise
 
