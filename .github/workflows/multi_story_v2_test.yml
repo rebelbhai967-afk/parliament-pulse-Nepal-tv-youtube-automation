@@ -15,8 +15,6 @@ jobs:
       WHISPER_BEAM_SIZE: "1"
       WHISPER_TEMPERATURE: "0.0"
       WHISPER_CPU_THREADS: "2"
-      INDICTRANS_MODEL: "hari31416/indictrans2-indic-en-1B-ONNX-int8"
-      INDICTRANS_FALLBACK_MODEL: "hari31416/indictrans2-indic-en-dist-200M-ONNX"
 
     steps:
       - name: Checkout repository
@@ -49,30 +47,18 @@ jobs:
         run: |
           python -m py_compile src/download_multi.py src/editorial_hooks.py src/batch_analyze_v2.py src/generate_metadata_v2.py src/batch_translate.py src/indictrans_onnx.py src/render_stories.py src/quality_control.py src/validate_metadata.py src/editorial_gate.py src/editorial_review.py src/normalize_selection.py
 
-      - name: Smoke-test free offline Nepali to English translation
+      - name: Smoke-test direct-audio subtitle dependencies
         run: |
           python - <<'PY'
-          import os
-          from src.indictrans_onnx import IndicTransONNX
-          model = IndicTransONNX(os.environ["INDICTRANS_MODEL"])
-          samples = [
-              "संसदको बैठकमा आज महत्वपूर्ण विषयमा छलफल भयो।",
-              "आजको प्रतिनिधि सभा बैठकमा सांसदहरूले सार्वजनिक सेवा, विकास निर्माण, बजेट कार्यान्वयन तथा नागरिकका गुनासाबारे विस्तृत छलफल गर्दै सम्बन्धित मन्त्रालयको जवाफ मागेका छन्। बैठकमा उठेका विषयहरू तथ्यमा आधारित रूपमा अभिलेख गरिने र आवश्यक प्रक्रिया अघि बढाइने बताइएको छ।",
-          ]
-          import re
-          for sample_no, sample in enumerate(samples, 1):
-              text = model.translate(sample, src_lang="npi_Deva", tgt_lang="eng_Latn")
-              print(f"Offline translation smoke test {sample_no}:", text)
-              letters = [ch for ch in text if ch.isalpha()]
-              latin = [ch for ch in letters if ("A" <= ch <= "Z") or ("a" <= ch <= "z")]
-              if not text or len(latin) < 8 or (letters and len(latin) / len(letters) < 0.55):
-                  raise RuntimeError("Offline translation backend did not produce valid English output.")
-              for token in re.findall(r"[A-Za-z]{16,}", text):
-                  lowered = token.lower()
-                  for size in range(3, 7):
-                      chunks = [lowered[i:i + size] for i in range(0, len(lowered) - size + 1)]
-                      if any(lowered.count(chunk) >= 3 for chunk in set(chunks)):
-                          raise RuntimeError(f"Offline translation smoke test produced garbled output: {token}")
+          from faster_whisper import WhisperModel
+          from pathlib import Path
+          import shutil
+          if not shutil.which("ffmpeg"):
+              raise RuntimeError("FFmpeg is required to extract original audio for English subtitles.")
+          from src.batch_translate import fmt, _selected_ranges
+          assert fmt(1.25) == "00:00:01,250"
+          print("Direct Whisper audio-to-English subtitle path is available.")
+          print("Original Nepali video/audio will be retained; only English SRT captions are generated.")
           PY
 
       - name: Discover both Parliament Houses
