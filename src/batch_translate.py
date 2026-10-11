@@ -143,7 +143,7 @@ def _translate_with_backoff(text, label, translator, fallback_loader=None):
             if fallback_loader is not None:
                 print(
                     f"Translation quality gate failed for {chunk_label}; "
-                    f"trying configured fallback model {fallback_model}."
+                    f"trying the configured fallback model."
                 )
                 fallback_translator = fallback_loader()
                 fallback = fallback_translator.translate(
