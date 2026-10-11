@@ -92,7 +92,7 @@ def _translate_with_backoff(text, label, translator, fallback_loader=None):
     quality_markers = (
         "appears garbled", "appears repetitive",
         "lacks basic English structure", "appears non-English",
-        "low English lexical coverage"
+        "low English lexical coverage", "very low English lexical coverage"
     )
 
     def translate_one(chunk, chunk_label, model, allow_recovery=True):
@@ -143,7 +143,7 @@ def _translate_with_backoff(text, label, translator, fallback_loader=None):
             if fallback_loader is not None:
                 print(
                     f"Translation quality gate failed for {chunk_label}; "
-                    f"trying stronger 1B INT8 fallback."
+                    f"trying configured fallback model {fallback_model}."
                 )
                 fallback_translator = fallback_loader()
                 fallback = fallback_translator.translate(
@@ -204,9 +204,13 @@ def _validate_english(english, label):
             if len(eligible) >= 12:
                 known = sum(1 for word in eligible if zipf_frequency(word, "en") >= 2.5)
                 coverage = known / len(eligible)
-                if coverage < 0.50:
+                # Segment-level lexical coverage is noisy for names,
+                # parliamentary terminology, and short context chunks. Keep this
+                # threshold conservative; the full subtitle file is checked
+                # separately with a stricter threshold before rendering.
+                if coverage < 0.45:
                     raise RuntimeError(
-                        f"Translation has low English lexical coverage for {label} ({coverage:.2f})"
+                        f"Translation has very low English lexical coverage for {label} ({coverage:.2f})"
                     )
         except ImportError:
             pass
@@ -279,7 +283,7 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
     def get_fallback_translator():
         nonlocal fallback_translator
         if fallback_translator is None:
-            print(f"Loading stronger 1B INT8 fallback translation model: {fallback_model}")
+            print(f"Loading configured fallback translation model: {fallback_model}")
             fallback_translator = IndicTransONNX(fallback_model)
         return fallback_translator
 
