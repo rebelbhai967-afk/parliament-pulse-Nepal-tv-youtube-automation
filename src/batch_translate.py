@@ -262,6 +262,16 @@ def _translate_segments(segments, label_prefix, translator, fallback_loader=None
     return results
 
 def main(input_dir, output_dir, summary_output=None, selection_file=None):
+    """Generate English subtitles from the original Nepali audio using Whisper.
+
+    Do not translate the already-ASR-transcribed Nepali text: ASR errors and
+    IndicTrans transliteration were causing repeatedly bad English captions.
+    The original video/audio remains unchanged; only SRT captions are created.
+    """
+    import subprocess
+    import tempfile
+    from faster_whisper import WhisperModel
+
     inp, out = Path(input_dir), Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     files = sorted(inp.glob("video_*.json"))
@@ -269,122 +279,131 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
 
     if selected_ranges:
         files = [f for f in files if str(f.resolve()) in selected_ranges]
-        print(f"Selected transcript sources for translation: {len(files)}")
+        print(f"Selected original-audio sources for English subtitles: {len(files)}")
     elif selection_file and Path(selection_file).exists():
-        raise RuntimeError("Selection contains no transcript windows for translation.")
+        raise RuntimeError("Selection contains no transcript windows for English subtitles.")
 
-    summaries = {}
     if not files:
         raise RuntimeError("No cleaned transcripts found.")
 
-    model_name = os.environ.get(
-        "INDICTRANS_MODEL",
-        "hari31416/indictrans2-indic-en-dist-200M-ONNX-fp16",
+    model_name = os.environ.get("WHISPER_TRANSLATION_MODEL", "large-v3-turbo")
+    cpu_threads = int(os.environ.get("WHISPER_CPU_THREADS", "2"))
+    beam_size = int(os.environ.get("WHISPER_TRANSLATION_BEAM_SIZE", "5"))
+    print(
+        f"Loading cached/free offline Whisper model for Nepali-audio-to-English "
+        f"subtitles: {model_name} (CPU int8, beam={beam_size})"
     )
-    print(f"Loading free offline translation model: {model_name}")
-    from indictrans_onnx import IndicTransONNX
-    translator = IndicTransONNX(model_name)
-    fallback_translator = None
-    fallback_model = os.environ.get(
-        "INDICTRANS_FALLBACK_MODEL",
-        "hari31416/indictrans2-indic-en-1B-ONNX-int8",
+    model = WhisperModel(
+        model_name,
+        device="cpu",
+        compute_type="int8",
+        cpu_threads=cpu_threads,
     )
 
-    def get_fallback_translator():
-        nonlocal fallback_translator
-        if fallback_translator is None:
-            print(f"Loading configured fallback translation model: {fallback_model}")
-            fallback_translator = IndicTransONNX(fallback_model)
-        return fallback_translator
-
+    summaries = {}
     for file in files:
-        target = out / f"{file.stem}.srt"
         data = json.loads(file.read_text(encoding="utf-8"))
         ranges = selected_ranges.get(str(file.resolve()))
-        selected = []
-        for seg in data.get("segments", []):
-            seg_start = float(seg.get("start", 0))
-            seg_end = float(seg.get("end", seg_start))
-            if not _overlaps_selected(seg_start, seg_end, ranges):
-                continue
-            text = str(seg.get("nepali", "")).strip()
-            if text:
-                selected.append((seg_start, seg_end, text))
+        if not ranges:
+            raise RuntimeError(f"No selected original-audio ranges for {file.name}")
 
-        if not selected:
-            raise RuntimeError(f"No selected transcript segments found for {file.name}")
+        source_video = Path(str(data.get("video", "")).strip())
+        if not source_video.is_absolute():
+            source_video = Path.cwd() / source_video
+        if not source_video.exists():
+            source_video = Path("data/videos") / f"{file.stem}.mp4"
+        if not source_video.exists():
+            raise FileNotFoundError(
+                f"Cannot locate original source video for English subtitles: {source_video}"
+            )
 
-        # Translate with local context instead of feeding tiny Whisper fragments
-        # one-by-one. Short fragments are prone to decoder repetition loops;
-        # grouped subtitle blocks preserve enough sentence context while keeping
-        # the ONNX input safely below its source-token limit.
-        blocks = []
-        block_start = None
-        block_end = None
-        block_parts = []
-        block_chars = 0
-        block_seconds = 0.0
-        max_block_chars = int(os.environ.get("INDICTRANS_BLOCK_CHARS", "420"))
-        max_block_seconds = float(os.environ.get("INDICTRANS_BLOCK_SECONDS", "18"))
+        subtitle_rows = []
+        with tempfile.TemporaryDirectory(prefix="ppn-english-subtitles-") as tmp:
+            for range_no, (range_start, range_end) in enumerate(ranges, 1):
+                audio_path = Path(tmp) / f"{file.stem}-{range_no}.wav"
+                command = [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-ss", str(max(0.0, range_start)),
+                    "-i", str(source_video),
+                    "-t", str(max(0.1, range_end - range_start)),
+                    "-vn", "-ac", "1", "-ar", "16000",
+                    "-c:a", "pcm_s16le", str(audio_path),
+                ]
+                result = subprocess.run(command, capture_output=True, text=True)
+                if result.returncode != 0 or not audio_path.exists():
+                    raise RuntimeError(
+                        f"Could not extract subtitle audio for {file.name}: "
+                        f"{result.stderr[-1000:]}"
+                    )
 
-        def flush_block():
-            nonlocal block_start, block_end, block_parts, block_chars, block_seconds
-            if block_start is not None and block_parts:
-                blocks.append((
-                    block_start,
-                    block_end,
-                    " ".join(block_parts).strip(),
-                ))
-            block_start = None
-            block_end = None
-            block_parts = []
-            block_chars = 0
-            block_seconds = 0.0
+                segments, info = model.transcribe(
+                    str(audio_path),
+                    language="ne",
+                    task="translate",
+                    beam_size=beam_size,
+                    temperature=0.0,
+                    condition_on_previous_text=False,
+                    vad_filter=True,
+                    word_timestamps=False,
+                )
+                before = len(subtitle_rows)
+                for segment in segments:
+                    text = " ".join(str(segment.text or "").split()).strip()
+                    if not text:
+                        continue
+                    letters = [ch for ch in text if ch.isalpha()]
+                    latin = [
+                        ch for ch in letters
+                        if ("A" <= ch <= "Z") or ("a" <= ch <= "z")
+                    ]
+                    if letters and len(latin) / len(letters) < 0.70:
+                        continue
+                    cue_start = max(range_start, range_start + float(segment.start))
+                    cue_end = min(range_end, range_start + float(segment.end))
+                    if cue_end > cue_start:
+                        subtitle_rows.append((cue_start, cue_end, text))
 
-        for seg_start, seg_end, text in selected:
-            proposed_chars = block_chars + len(text) + (1 if block_parts else 0)
-            proposed_seconds = block_seconds + max(0.0, seg_end - seg_start)
-            if block_parts and (
-                proposed_chars > max_block_chars
-                or proposed_seconds > max_block_seconds
-            ):
-                flush_block()
-            if block_start is None:
-                block_start = seg_start
-            block_end = seg_end
-            block_parts.append(text)
-            block_chars += len(text) + (1 if len(block_parts) > 1 else 0)
-            block_seconds += max(0.0, seg_end - seg_start)
-        flush_block()
+                if len(subtitle_rows) == before:
+                    raise RuntimeError(
+                        f"Whisper produced no English subtitle cues for "
+                        f"{file.name} selected range {range_start:.1f}-{range_end:.1f}s "
+                        f"(detected audio language: {getattr(info, 'language', 'unknown')})."
+                    )
 
-        translated = _translate_segments(
-            [(i, text) for i, (_, _, text) in enumerate(blocks)],
-            file.name,
-            translator,
-            get_fallback_translator,
-        )
-        lines = [
-            (blocks[i][0], blocks[i][1], translated[i])
-            for i in range(len(blocks))
+        subtitle_rows.sort(key=lambda row: (row[0], row[1]))
+        joined = " ".join(row[2] for row in subtitle_rows).strip()
+        letters = [ch for ch in joined if ch.isalpha()]
+        latin = [
+            ch for ch in letters
+            if ("A" <= ch <= "Z") or ("a" <= ch <= "z")
         ]
+        latin_ratio = len(latin) / len(letters) if letters else 0.0
+        if not subtitle_rows or latin_ratio < 0.75:
+            raise RuntimeError(
+                f"Direct audio translation did not produce English-first subtitles "
+                f"for {file.name} (Latin ratio {latin_ratio:.2f})."
+            )
 
-        with target.open("w", encoding="utf-8") as f:
-            for i, (start, end, text) in enumerate(lines, 1):
-                f.write(f"{i}\n{fmt(start)} --> {fmt(end)}\n{text}\n\n")
+        target = out / f"{file.stem}.srt"
+        with target.open("w", encoding="utf-8") as handle:
+            for index, (cue_start, cue_end, text) in enumerate(subtitle_rows, 1):
+                handle.write(
+                    f"{index}\n{fmt(cue_start)} --> {fmt(cue_end)}\n{text}\n\n"
+                )
 
         if summary_output is not None:
-            # Avoid another Google request: the topic summary source is already
-            # represented by the first translated subtitle lines.
-            summary_text = " ".join(translated[:8]).strip()
-            summaries[file.stem] = summary_text[:2000]
-        print("Translated", file.name)
+            summaries[file.stem] = joined[:2000]
+        print(
+            f"Created English subtitles from original Nepali audio: {file.name} "
+            f"({len(subtitle_rows)} cues; Latin ratio {latin_ratio:.2f})"
+        )
 
     if summary_output is not None:
         Path(summary_output).write_text(
             json.dumps(summaries, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-    print("Batch translation complete.")
+    print("English subtitles generated from original Nepali audio; original audio/video unchanged.")
 
 
 if __name__ == "__main__":
