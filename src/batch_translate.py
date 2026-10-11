@@ -356,7 +356,10 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
                         ch for ch in letters
                         if ("A" <= ch <= "Z") or ("a" <= ch <= "z")
                     ]
-                    if letters and len(latin) / len(letters) < 0.70:
+                    # Keep mixed-script/short English cues for the file-level
+                    # lexical QC to assess. A strict per-cue 0.70 ratio can discard
+                    # every cue in an otherwise translatable Nepali passage.
+                    if letters and len(latin) / len(letters) < 0.35:
                         continue
                     cue_start = max(range_start, range_start + float(segment.start))
                     cue_end = min(range_end, range_start + float(segment.end))
