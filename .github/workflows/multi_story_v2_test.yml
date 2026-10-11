@@ -5,6 +5,8 @@ on:
   push:
     paths:
       - ".github/workflows/multi_story_v2_test.yml"
+      - "src/batch_translate.py"
+      - "src/quality_control.py"
 
 concurrency:
   group: parliament-pulse-v2-test
