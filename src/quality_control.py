@@ -91,6 +91,51 @@ def subtitle_stats(path):
     return len(cues), ratio
 
 
+def subtitle_repetition_errors(path):
+    """Detect repeated cue/word loops that lexical coverage alone misses."""
+    text = path.read_text(encoding="utf-8", errors="replace")
+    cues, current = [], []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            if current:
+                cues.append(" ".join(current))
+                current = []
+            continue
+        if "-->" in line or line.isdigit():
+            continue
+        current.append(line)
+    if current:
+        cues.append(" ".join(current))
+
+    normalize = lambda value: re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
+    normalized = [normalize(cue) for cue in cues if normalize(cue)]
+    errors = []
+    run = 1
+    for index in range(1, len(normalized)):
+        run = run + 1 if normalized[index] == normalized[index - 1] else 1
+        if run >= 3:
+            errors.append("same subtitle repeated in 3+ consecutive cues")
+            break
+
+    joined = " ".join(normalized)
+    if re.search(r"\b([a-z]{3,})(?:\s+\1){2,}\b", joined):
+        errors.append("same word repeated 3+ times consecutively")
+
+    words = re.findall(r"[a-z]+(?:'[a-z]+)?", joined)
+    for size in (3, 4, 5, 6):
+        if len(words) < size * 4:
+            continue
+        grams = [" ".join(words[i:i + size]) for i in range(len(words) - size + 1)]
+        counts = {}
+        for gram in grams:
+            counts[gram] = counts.get(gram, 0) + 1
+        if any(count >= 5 for count in counts.values()):
+            errors.append(f"repeated {size}-word phrase loop detected")
+            break
+    return errors
+
+
 def validate_subtitles(selection, subtitles_dir, errors):
     subtitles = Path(subtitles_dir)
     checked = set()
@@ -179,6 +224,10 @@ def validate_english_quality(selection, subtitles_dir, errors):
                 if not path.exists():
                     continue
                 text = path.read_text(encoding="utf-8", errors="replace")
+                repetition_errors = subtitle_repetition_errors(path)
+                if repetition_errors:
+                    errors.append(f"{kind.title()} {i}: subtitle repetition detected in {stem}: " + "; ".join(repetition_errors))
+                    continue
                 if looks_garbled_english(text):
                     errors.append(f"{kind.title()} {i}: garbled English subtitle detected in {stem}")
                     continue
