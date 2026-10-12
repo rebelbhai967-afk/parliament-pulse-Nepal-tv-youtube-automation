@@ -351,16 +351,10 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
                     text = " ".join(str(segment.text or "").split()).strip()
                     if not text:
                         continue
-                    letters = [ch for ch in text if ch.isalpha()]
-                    latin = [
-                        ch for ch in letters
-                        if ("A" <= ch <= "Z") or ("a" <= ch <= "z")
-                    ]
-                    # Keep mixed-script/short English cues for the file-level
-                    # lexical QC to assess. A strict per-cue 0.70 ratio can discard
-                    # every cue in an otherwise translatable Nepali passage.
-                    if letters and len(latin) / len(letters) < 0.35:
-                        continue
+                    # Keep every non-empty cue returned by Whisper's translate
+                    # task. Do not filter individual cues by script: short English
+                    # phrases and names can have low Latin ratios. Validate the
+                    # assembled SRT as a whole below.
                     cue_start = max(range_start, range_start + float(segment.start))
                     cue_end = min(range_end, range_start + float(segment.end))
                     if cue_end > cue_start:
