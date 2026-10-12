@@ -286,7 +286,7 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
     if not files:
         raise RuntimeError("No cleaned transcripts found.")
 
-    model_name = os.environ.get("WHISPER_TRANSLATION_MODEL", "large-v3-turbo")
+    model_name = os.environ.get("WHISPER_TRANSLATION_MODEL", "large-v3")
     cpu_threads = int(os.environ.get("WHISPER_CPU_THREADS", "2"))
     beam_size = int(os.environ.get("WHISPER_TRANSLATION_BEAM_SIZE", "5"))
     print(
