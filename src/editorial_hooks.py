@@ -5,15 +5,15 @@ STRONG_WORDS = ("सरकार", "मन्त्रालय", "निर्�
 FILLER_PHRASES = ("धन्यवाद सभामुख", "धन्यवाद अध्यक्ष", "मेरो भनाइ यति नै", "समय दिनुभएकोमा धन्यवाद")
 
 def clean(text):
-    return re.sub(r"\\s+", " ", str(text or "")).strip()
+    return re.sub(r"\s+", " ", str(text or "")).strip()
 
 def sentence_candidates(text):
     text = clean(text)
-    parts = re.split(r"(?<=[।!?])\\s+", text)
+    parts = re.split(r"(?<=[।!?])\s+", text)
     parts = [clean(p) for p in parts if len(clean(p)) >= 24]
     if parts:
         return parts
-    clauses = re.split(r"(?<=[,;:])\\s+", text)
+    clauses = re.split(r"(?<=[,;:])\s+", text)
     return [clean(x) for x in clauses if len(clean(x)) >= 24]
 
 def score_hook(sentence):
