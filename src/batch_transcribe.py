@@ -33,7 +33,7 @@ def transcribe_video(model, video_path, output_path):
     temperature = os.getenv("WHISPER_TEMPERATURE", "0.0")
     temperature_value = float(temperature)
     temperatures = [temperature_value, 0.2, 0.4] if temperature_value == 0.0 else temperature_value
-    print(f"Whisper: large-v3-turbo / int8 / beam={beam_size} / temperature={temperatures}")
+    print(f"Whisper: large-v3 / int8 / beam={beam_size} / temperature={temperatures}")
 
     segments, info = model.transcribe(
         str(audio_path),
@@ -59,7 +59,7 @@ def transcribe_video(model, video_path, output_path):
         "video": str(video),
         "language": info.language,
         "language_probability": info.language_probability,
-        "model": "large-v3-turbo",
+        "model": "large-v3",
         "transcription_mode": f"beam-{beam_size}",
         "segments": []
     }
@@ -99,7 +99,7 @@ def transcribe_directory(input_dir, output_dir):
     print(f"BATCH TRANSCRIPTION: {len(videos)} videos")
 
     model = WhisperModel(
-        "large-v3-turbo",
+        "large-v3",
         device="cpu",
         compute_type="int8",
         cpu_threads=int(os.getenv("WHISPER_CPU_THREADS", "2")),
