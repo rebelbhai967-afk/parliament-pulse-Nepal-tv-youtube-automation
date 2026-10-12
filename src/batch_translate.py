@@ -338,7 +338,10 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
 
                 segments, info = model.transcribe(
                     str(audio_path),
-                    language="ne",
+                    # Let Whisper detect the spoken language itself. Forcing "ne"
+                    # can pin low-resource Nepali output to Devanagari even with
+                    # task="translate", leaving no English subtitle cues.
+                    language=None,
                     task="translate",
                     beam_size=beam_size,
                     temperature=0.0,
