@@ -59,7 +59,7 @@ def discover_digital(session, headers):
             continue
         seen.add(full)
         parent_text = link.parent.get_text(" ", strip=True) if link.parent else ""
-        title = re.sub(r"\\s+", " ", link.get_text(" ", strip=True) or parent_text).strip()
+        title = re.sub(r"\s+", " ", link.get_text(" ", strip=True) or parent_text).strip()
         candidates.append((full, title, parent_text))
 
     collections = []
@@ -74,7 +74,7 @@ def discover_digital(session, headers):
                 detail_soup = BeautifulSoup(detail.text, "html.parser")
                 for tag in detail_soup(["script", "style", "noscript", "svg"]):
                     tag.decompose()
-                detail_text = re.sub(r"\\s+", " ", detail_soup.get_text(" ", strip=True))
+                detail_text = re.sub(r"\s+", " ", detail_soup.get_text(" ", strip=True))
                 # Prefer explicit meeting metadata/headings over generic page-wide text.
                 headings = " ".join(x.get_text(" ", strip=True) for x in detail_soup.find_all(["h1", "h2", "h3", "title"]))
                 house = digital_house(headings)
@@ -92,7 +92,7 @@ def discover_digital(session, headers):
         collections.append({
             "source_id": source_id,
             "house": house,
-            "title": re.sub(r"\\s+", " ", title or parent_text or house).strip()[:240],
+            "title": re.sub(r"\s+", " ", title or parent_text or house).strip()[:240],
             "url": full,
             "source_index": len(collections),
             "platform": "digital_parliament",
