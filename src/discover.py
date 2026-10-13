@@ -1,5 +1,6 @@
 import json
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -35,10 +36,32 @@ def discover(output_path):
     headers = {"User-Agent": "Mozilla/5.0"}
     collections = []
     seen = set()
+    source_failures = []
 
     for source in SOURCES:
-        response = requests.get(source["url"], headers=headers, timeout=30, verify=False)
-        response.raise_for_status()
+        response = None
+        last_error = None
+        # Official Parliament sites can temporarily refuse connections. Retry a
+        # small, bounded number of times instead of failing on the first blip.
+        for attempt in range(1, 4):
+            try:
+                response = requests.get(
+                    source["url"], headers=headers, timeout=(10, 30), verify=False
+                )
+                response.raise_for_status()
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                print(
+                    f"WARNING: {source['house']} source attempt {attempt}/3 failed: {exc}",
+                    file=sys.stderr,
+                )
+                if attempt < 3:
+                    time.sleep(attempt * 5)
+        if response is None or not response.ok:
+            source_failures.append(f'{source["house"]} ({source["url"]}): {last_error}')
+            continue
+
         soup = BeautifulSoup(response.text, "html.parser")
 
         for link in soup.find_all("a", href=True):
@@ -57,6 +80,17 @@ def discover(output_path):
                 "url": full,
                 "source_index": len(collections),
             })
+
+    found_houses = {item["house"] for item in collections}
+    required_houses = {source["house"] for source in SOURCES}
+    missing_houses = sorted(required_houses - found_houses)
+    if source_failures or missing_houses:
+        details = "; ".join(source_failures) if source_failures else "No collection links found"
+        missing = ", ".join(missing_houses) if missing_houses else "none"
+        raise RuntimeError(
+            "Parliament discovery incomplete; refusing to build a misleading one-House batch. "
+            f"Missing Houses: {missing}. Source errors: {details}"
+        )
 
     result = {
         "sources": SOURCES,
