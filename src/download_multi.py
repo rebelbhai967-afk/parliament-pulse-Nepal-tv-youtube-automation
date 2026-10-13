@@ -198,7 +198,7 @@ def video_pages(collection, s):
             media_seen.add(full)
             # Try to recover an official "video - Name" label close to the URL.
             context = response.text[max(0, match.start() - 700):match.start()]
-            labels = re.findall(r"video\\s*[-–:]\\s*([^<>{}\\[\\]\\\\"']{2,100})", context, flags=re.I)
+            labels = re.findall(r'video\s*[-–:]\s*([^<>{}\[\]"\s]{2,100})', context, flags=re.I)
             speaker = speaker_from_link(labels[-1]) if labels else ""
             index_in_page = len(media_pages) + 1
             media_pages.append({
