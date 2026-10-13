@@ -7,6 +7,7 @@ on:
       - ".github/workflows/multi_story_v2_test.yml"
       - "src/batch_translate.py"
       - "src/batch_transcribe.py"
+      - "src/discover.py"
       - "src/quality_control.py"
 
 concurrency:
