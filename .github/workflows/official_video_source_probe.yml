@@ -6,6 +6,11 @@ on:
         description: "Official digital.parliament.gov.np meeting page URL"
         required: false
         default: "https://digital.parliament.gov.np/baithak-detail/c97caf0c-e128-4dee-a3fe-b1dd3609ee80"
+  push:
+    branches: [main]
+    paths:
+      - "automation_posting/probe_official_video_sources.py"
+      - ".github/workflows/official_video_source_probe.yml"
 permissions:
   contents: read
 jobs:
@@ -17,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Inspect official page without credentials
         env:
-          MEETING_URL: ${{ inputs.meeting_url }}
+          MEETING_URL: ${{ inputs.meeting_url || 'https://digital.parliament.gov.np/baithak-detail/c97caf0c-e128-4dee-a3fe-b1dd3609ee80' }}
         run: python automation_posting/probe_official_video_sources.py "$MEETING_URL"
       - name: Save probe report
         uses: actions/upload-artifact@v4
