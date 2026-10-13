@@ -6,6 +6,7 @@ from urllib.parse import urljoin, urlparse
 
 import requests
 import urllib3
+import yt_dlp
 from bs4 import BeautifulSoup
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -162,12 +163,51 @@ def is_procedural_label_text(text):
 
 
 def video_pages(collection, s):
-    response = s.get(collection["url"], timeout=30, verify=False)
+    response = s.get(collection["url"], timeout=35, verify=False)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
     pages = []
     seen = set()
-    host = f"{urlparse(collection['url']).scheme}://{urlparse(collection['url']).netloc}"
+    parsed = urlparse(collection["url"])
+    host = f"{parsed.scheme}://{parsed.netloc}"
+
+    # The official Digital Parliament meeting page links its full-session
+    # recordings to YouTube as "बैठक भिडियो". Select only those full-session
+    # links, not the many individual speaker clips listed further down the page.
+    if parsed.netloc.lower() == "digital.parliament.gov.np" or "/baithak-detail/" in parsed.path:
+        meeting_links = []
+        for link in soup.find_all("a", href=True):
+            href = link.get("href", "").strip()
+            full = urljoin(collection["url"], href)
+            label = clean(link.get_text(" ", strip=True) or link.get("aria-label") or link.get("title"))
+            if "youtube.com/" not in full.lower() and "youtu.be/" not in full.lower():
+                continue
+            if "बैठक भिडियो" not in label and "meeting video" not in label.lower() and "रेकर्डिङ हेर्नुहोस्" not in label:
+                continue
+            if full not in seen:
+                seen.add(full)
+                meeting_links.append((full, label))
+        if not meeting_links:
+            # Some page versions expose the recording link with no visible text.
+            for link in soup.find_all("a", href=True):
+                full = urljoin(collection["url"], link.get("href", "").strip())
+                if ("youtube.com/" in full.lower() or "youtu.be/" in full.lower()) and full not in seen:
+                    label = clean(link.get_text(" ", strip=True) or "Official Parliament meeting recording")
+                    seen.add(full)
+                    meeting_links.append((full, label))
+                    break
+        # One full-session recording per meeting page avoids duplicating the
+        # same official page for every speaker clip and preserves session context.
+        if meeting_links:
+            source_url, label = meeting_links[0]
+            pages.append({
+                "page": collection["url"],
+                "source": source_url,
+                "speaker": "",
+                "link_label": label,
+                "page_title": clean(soup.find("h1").get_text(" ", strip=True)) if soup.find("h1") else collection.get("title", ""),
+            })
+        return pages
 
     for link in soup.find_all("a", href=True):
         href = link.get("href", "").strip()
@@ -269,6 +309,32 @@ def source_from_page(page_url, s):
 
 
 def download(url, path, s):
+    if "youtube.com/" in url.lower() or "youtu.be/" in url.lower():
+        # Official Digital Parliament records are linked through YouTube.
+        # yt-dlp downloads the original recording; FFmpeg merges streams to MP4.
+        options = {
+            "format": "bestvideo*+bestaudio/best",
+            "outtmpl": str(path.with_suffix(".%(ext)s")),
+            "merge_output_format": "mp4",
+            "noplaylist": True,
+            "quiet": False,
+            "retries": 3,
+            "fragment_retries": 3,
+        }
+        with yt_dlp.YoutubeDL(options) as downloader:
+            info = downloader.extract_info(url, download=True)
+            downloaded = Path(downloader.prepare_filename(info))
+        candidates = [path, path.with_suffix(".mp4"), downloaded]
+        actual = next((candidate for candidate in candidates if candidate.exists() and candidate.stat().st_size > 0), None)
+        if actual is None:
+            # When FFmpeg remuxes to MP4, prepare_filename may still report the
+            # pre-merge extension; locate the output by this video's stem.
+            actual = next((p for p in path.parent.glob(path.stem + ".*") if p.is_file() and p.stat().st_size > 0), None)
+        if actual is None:
+            raise RuntimeError(f"yt-dlp reported success but no downloaded file was found for {url}")
+        if actual != path:
+            actual.replace(path)
+        return
     with s.get(url, stream=True, timeout=180, verify=False) as response:
         response.raise_for_status()
         with open(path, "wb") as f:
@@ -325,10 +391,14 @@ def main(collections_json, output_dir, max_collections=16, max_videos=24):
             page_source = None
             page_title = ""
             page_speaker = ""
-            try:
-                page_source, page_title, page_speaker = source_from_page(page["page"], s)
-            except Exception as exc:
-                print("Page metadata failed:", page["page"], exc)
+            page_source = page.get("source")
+            page_title = page.get("page_title", "")
+            page_speaker = ""
+            if not page_source:
+                try:
+                    page_source, page_title, page_speaker = source_from_page(page["page"], s)
+                except Exception as exc:
+                    print("Page metadata failed:", page["page"], exc)
             # Never promote the ordinary page title into a speaker name.
             speaker = page.get("speaker") or page_speaker
             page_candidates.append({
