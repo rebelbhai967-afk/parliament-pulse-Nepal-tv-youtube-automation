@@ -1,6 +1,9 @@
+import base64
 import json
+import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -310,8 +313,9 @@ def source_from_page(page_url, s):
 
 def download(url, path, s):
     if "youtube.com/" in url.lower() or "youtu.be/" in url.lower():
-        # Official Digital Parliament records are linked through YouTube.
-        # yt-dlp downloads the original recording; FFmpeg merges streams to MP4.
+        # GitHub-hosted runners can be challenged by YouTube. When the owner
+        # supplies an exported Netscape cookie file encoded as a GitHub secret,
+        # use it; never scrape browser cookies or print cookie contents.
         options = {
             "format": "bestvideo*+bestaudio/best",
             "outtmpl": str(path.with_suffix(".%(ext)s")),
@@ -321,19 +325,52 @@ def download(url, path, s):
             "retries": 3,
             "fragment_retries": 3,
         }
-        with yt_dlp.YoutubeDL(options) as downloader:
-            info = downloader.extract_info(url, download=True)
-            downloaded = Path(downloader.prepare_filename(info))
-        candidates = [path, path.with_suffix(".mp4"), downloaded]
-        actual = next((candidate for candidate in candidates if candidate.exists() and candidate.stat().st_size > 0), None)
-        if actual is None:
-            # When FFmpeg remuxes to MP4, prepare_filename may still report the
-            # pre-merge extension; locate the output by this video's stem.
-            actual = next((p for p in path.parent.glob(path.stem + ".*") if p.is_file() and p.stat().st_size > 0), None)
-        if actual is None:
-            raise RuntimeError(f"yt-dlp reported success but no downloaded file was found for {url}")
-        if actual != path:
-            actual.replace(path)
+        cookie_b64 = os.environ.get("YOUTUBE_COOKIES_B64", "").strip()
+        cookie_path = None
+        if cookie_b64:
+            try:
+                cookie_bytes = base64.b64decode(cookie_b64, validate=True)
+                cookie_text = cookie_bytes.decode("utf-8")
+                if "Netscape HTTP Cookie File" not in cookie_text[:200]:
+                    raise ValueError("cookie data is not a Netscape-format cookies.txt file")
+                handle = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".cookies.txt", delete=False)
+                try:
+                    handle.write(cookie_text)
+                    cookie_path = Path(handle.name)
+                finally:
+                    handle.close()
+                options["cookiefile"] = str(cookie_path)
+            except (ValueError, UnicodeDecodeError) as exc:
+                raise RuntimeError("YOUTUBE_COOKIES_B64 must be base64-encoded Netscape cookies.txt data.") from exc
+        else:
+            print("YOUTUBE_COOKIES_B64 is not configured; YouTube may block GitHub-hosted runners with bot verification.")
+
+        try:
+            with yt_dlp.YoutubeDL(options) as downloader:
+                info = downloader.extract_info(url, download=True)
+                downloaded = Path(downloader.prepare_filename(info))
+            candidates = [path, path.with_suffix(".mp4"), downloaded]
+            actual = next((candidate for candidate in candidates if candidate.exists() and candidate.stat().st_size > 0), None)
+            if actual is None:
+                # FFmpeg may remux to MP4 while prepare_filename keeps the source extension.
+                actual = next((p for p in path.parent.glob(path.stem + ".*") if p.is_file() and p.stat().st_size > 0), None)
+            if actual is None:
+                raise RuntimeError(f"yt-dlp reported success but no downloaded file was found for {url}")
+            if actual != path:
+                actual.replace(path)
+        except Exception as exc:
+            message = str(exc)
+            if "confirm you’re not a bot" in message.lower() or "confirm you're not a bot" in message.lower():
+                raise RuntimeError(
+                    "YouTube blocked this GitHub-hosted runner with bot verification. "
+                    "Add a valid, lawfully obtained Netscape cookies.txt as the repository Actions secret "
+                    "YOUTUBE_COOKIES_B64 (base64-encoded), or use an official direct-video source. "
+                    "Do not commit cookies to the repository."
+                ) from exc
+            raise
+        finally:
+            if cookie_path and cookie_path.exists():
+                cookie_path.unlink()
         return
     with s.get(url, stream=True, timeout=180, verify=False) as response:
         response.raise_for_status()
