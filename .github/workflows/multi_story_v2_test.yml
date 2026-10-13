@@ -8,6 +8,7 @@ on:
       - "src/batch_translate.py"
       - "src/batch_transcribe.py"
       - "src/discover.py"
+      - "src/download_multi.py"
       - "src/quality_control.py"
 
 concurrency:
