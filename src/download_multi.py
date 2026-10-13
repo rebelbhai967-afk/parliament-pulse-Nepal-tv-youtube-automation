@@ -1,5 +1,6 @@
 import base64
 import json
+import html
 import os
 import re
 import sys
@@ -21,6 +22,10 @@ def session():
     s = requests.Session()
     s.headers.update(HEADERS)
     return s
+
+
+def html_unescape(value):
+    return html.unescape(str(value or ""))
 
 
 def clean(value):
@@ -174,10 +179,44 @@ def video_pages(collection, s):
     parsed = urlparse(collection["url"])
     host = f"{parsed.scheme}://{parsed.netloc}"
 
-    # The official Digital Parliament meeting page links its full-session
-    # recordings to YouTube as "बैठक भिडियो". Select only those full-session
-    # links, not the many individual speaker clips listed further down the page.
+    # Digital Parliament embeds official MP4 assets inside page scripts/hydration
+    # data, even when no <video src> is present in static HTML. Prefer these
+    # official-hosted media URLs over YouTube, which blocks GitHub runners.
     if parsed.netloc.lower() == "digital.parliament.gov.np" or "/baithak-detail/" in parsed.path:
+        media_pages = []
+        media_seen = set()
+        pattern = r"""https?:\\?/\\?/[^"'\\s<>\\\\]+?\\.mp4(?:\\?[^"'\\s<>\\\\]*)?"""
+        for match in re.finditer(pattern, response.text, flags=re.I):
+            raw_url = match.group(0)
+            full = html_unescape(raw_url).replace("\\\\/", "/").replace("\\/", "/").replace("&amp;", "&")
+            full = urljoin(collection["url"], full)
+            media_host = (urlparse(full).hostname or "").lower()
+            if media_host != "digital.parliament.gov.np" or ".mp4" not in urlparse(full).path.lower():
+                continue
+            if full in media_seen:
+                continue
+            media_seen.add(full)
+            # Try to recover an official "video - Name" label close to the URL.
+            context = response.text[max(0, match.start() - 700):match.start()]
+            labels = re.findall(r"video\\s*[-–:]\\s*([^<>{}\\[\\]\\\\"']{2,100})", context, flags=re.I)
+            speaker = speaker_from_link(labels[-1]) if labels else ""
+            index_in_page = len(media_pages) + 1
+            media_pages.append({
+                "page": collection["url"] + "#official-media-" + str(index_in_page),
+                "source": full,
+                "speaker": speaker,
+                "link_label": "Official Parliament MP4",
+                "page_title": clean(soup.find("h1").get_text(" ", strip=True)) if soup.find("h1") else collection.get("title", ""),
+            })
+            if len(media_pages) >= 12:
+                break
+        if media_pages:
+            print(f"Found {len(media_pages)} official-hosted MP4 assets in {collection['url']}")
+            return media_pages
+
+        # Fallback to official meeting-recording links only when the page has
+        # no direct Parliament-hosted MP4 assets. Never prefer a random YouTube
+        # link if official direct media exists.
         meeting_links = []
         for link in soup.find_all("a", href=True):
             href = link.get("href", "").strip()
