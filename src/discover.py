@@ -33,7 +33,7 @@ LEGACY_SOURCES = [
 
 
 def digital_house(text):
-    value = re.sub(r"\\s+", " ", text or "")
+    value = re.sub(r"\s+", " ", text or "")
     if "समिति" in value or "committee" in value.lower() or "संयुक्त" in value:
         return ""
     if "राष्ट्रिय सभा" in value or "National Assembly" in value:
@@ -67,7 +67,7 @@ def discover_digital(session, headers):
         collections.append({
             "source_id": source_id,
             "house": house,
-            "title": re.sub(r"\\s+", " ", title).strip(),
+            "title": re.sub(r"\s+", " ", title).strip(),
             "url": full,
             "source_index": len(collections),
             "platform": "digital_parliament",
