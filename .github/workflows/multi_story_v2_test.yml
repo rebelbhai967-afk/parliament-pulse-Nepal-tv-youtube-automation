@@ -25,6 +25,7 @@ jobs:
       WHISPER_CPU_THREADS: "2"
       WHISPER_TRANSCRIPTION_MODEL: "large-v3-turbo"
       WHISPER_TRANSLATION_MODEL: "large-v3"
+      YOUTUBE_COOKIES_B64: ${{ secrets.YOUTUBE_COOKIES_B64 }}
 
     steps:
       - name: Checkout repository
