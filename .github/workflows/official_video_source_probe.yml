@@ -1,0 +1,28 @@
+name: Official Parliament Video Source Probe
+on:
+  workflow_dispatch:
+    inputs:
+      meeting_url:
+        description: "Optional official digital.parliament.gov.np meeting page URL"
+        required: false
+        default: "https://digital.parliament.gov.np/baithak-detail/c97caf0c-e128-4dee-a3fe-b1dd3609ee80"
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout isolated probe branch
+        uses: actions/checkout@v4
+      - name: Inspect official page without credentials
+        env:
+          MEETING_URL: ${{ inputs.meeting_url }}
+        run: |
+          python automation_posting/probe_official_video_sources.py "$MEETING_URL"
+      - name: Save probe report
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-video-source-probe
+          path: official-video-source-probe.txt
+          if-no-files-found: error
