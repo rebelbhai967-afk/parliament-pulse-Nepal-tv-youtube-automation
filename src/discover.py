@@ -44,10 +44,11 @@ def digital_house(text):
 
 
 def discover_digital(session, headers):
+    """Discover official meeting pages, classifying from detail pages when cards omit House names."""
     response = session.get(DIGITAL_URL, headers=headers, timeout=(10, 35))
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
-    collections = []
+    candidates = []
     seen = set()
     for link in soup.find_all("a", href=True):
         href = link.get("href", "").strip()
@@ -56,33 +57,57 @@ def discover_digital(session, headers):
         full = urljoin(DIGITAL_URL, href)
         if full in seen:
             continue
-        parent_text = link.parent.get_text(" ", strip=True) if link.parent else ""
-        label = " ".join((link.get_text(" ", strip=True), parent_text))
-        house = digital_house(label)
-        if not house:
-            continue
         seen.add(full)
+        parent_text = link.parent.get_text(" ", strip=True) if link.parent else ""
+        title = re.sub(r"\\s+", " ", link.get_text(" ", strip=True) or parent_text).strip()
+        candidates.append((full, title, parent_text))
+
+    collections = []
+    for full, title, parent_text in candidates:
+        # The archive cards often omit the House label; inspect the official meeting detail page.
+        house = digital_house(" ".join((title, parent_text)))
+        detail_text = ""
+        if not house:
+            try:
+                detail = session.get(full, headers=headers, timeout=(10, 25))
+                detail.raise_for_status()
+                detail_soup = BeautifulSoup(detail.text, "html.parser")
+                for tag in detail_soup(["script", "style", "noscript", "svg"]):
+                    tag.decompose()
+                detail_text = re.sub(r"\\s+", " ", detail_soup.get_text(" ", strip=True))
+                # Prefer explicit meeting metadata/headings over generic page-wide text.
+                headings = " ".join(x.get_text(" ", strip=True) for x in detail_soup.find_all(["h1", "h2", "h3", "title"]))
+                house = digital_house(headings)
+                if not house:
+                    house = digital_house(detail_text[:1800])
+                if not title or title == full:
+                    title = headings[:220] or detail_soup.title.get_text(" ", strip=True) if detail_soup.title else title
+            except requests.RequestException as exc:
+                print(f"WARNING: Could not inspect official meeting page {full}: {exc}", file=sys.stderr)
+                continue
+        if not house:
+            # Never guess the House when the official page does not identify it.
+            continue
         source_id = "national_assembly" if house == "National Assembly" else "house_of_representatives"
-        title = link.get_text(" ", strip=True) or parent_text[:220] or house
         collections.append({
             "source_id": source_id,
             "house": house,
-            "title": re.sub(r"\s+", " ", title).strip(),
+            "title": re.sub(r"\\s+", " ", title or parent_text or house).strip()[:240],
             "url": full,
             "source_index": len(collections),
             "platform": "digital_parliament",
         })
+
     found = {item["house"] for item in collections}
     required = {"National Assembly", "House of Representatives"}
     missing = sorted(required - found)
     if missing:
         raise RuntimeError(
-            "Official Digital Parliament archive did not expose both Houses. "
-            f"Missing: {', '.join(missing)}; found {len(collections)} meeting pages."
+            "Official Digital Parliament archive did not expose both Houses after checking meeting detail pages. "
+            f"Missing: {', '.join(missing)}; found {len(collections)} classifiable meeting pages "
+            f"from {len(candidates)} archive links."
         )
-    # Preserve source order from the official archive; downstream code balances Houses.
     return collections
-
 
 def discover_legacy(session, headers):
     collections = []
