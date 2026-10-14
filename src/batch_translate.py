@@ -344,7 +344,11 @@ def main(input_dir, output_dir, summary_output=None, selection_file=None):
                     language=None,
                     task="translate",
                     beam_size=beam_size,
-                    temperature=0.0,
+                    # Retry-friendly decoding settings reduce repetitive loops
+                    # observed in long Nepali parliamentary recordings.
+                    temperature=[0.0, 0.2, 0.4],
+                    repetition_penalty=1.15,
+                    no_repeat_ngram_size=3,
                     condition_on_previous_text=False,
                     vad_filter=True,
                     word_timestamps=False,
