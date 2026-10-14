@@ -185,10 +185,12 @@ def video_pages(collection, s):
     if parsed.netloc.lower() == "digital.parliament.gov.np" or "/baithak-detail/" in parsed.path:
         media_pages = []
         media_seen = set()
-        pattern = r"""https?:\\?/\\?/[^"'\\s<>\\\\]+?\\.mp4(?:\\?[^"'\\s<>\\\\]*)?"""
-        for match in re.finditer(pattern, response.text, flags=re.I):
-            raw_url = match.group(0)
-            full = html_unescape(raw_url).replace("\\\\/", "/").replace("\\/", "/").replace("&amp;", "&")
+        # JSON/script data often escapes URL slashes as \\/. Normalize first,
+        # then match ordinary URLs; the old expression over-escaped tokens.
+        page_text = html_unescape(response.text).replace("\\\\/", "/").replace("\\/", "/")
+        pattern = r"""https?://[^"'\s<>\\]+?\.mp4(?:\?[^"'\s<>\\]*)?"""
+        for match in re.finditer(pattern, page_text, flags=re.I):
+            full = match.group(0).replace("&amp;", "&")
             full = urljoin(collection["url"], full)
             media_host = (urlparse(full).hostname or "").lower()
             if media_host != "digital.parliament.gov.np" or ".mp4" not in urlparse(full).path.lower():
