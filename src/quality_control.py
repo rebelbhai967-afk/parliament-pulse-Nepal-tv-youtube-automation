@@ -123,15 +123,24 @@ def subtitle_repetition_errors(path):
         errors.append("same word repeated 3+ times consecutively")
 
     words = re.findall(r"[a-z]+(?:'[a-z]+)?", joined)
+    # A phrase appearing repeatedly across a long parliamentary speech is not
+    # by itself a decoder loop: motions, names, and formal wording recur often.
+    # Flag only a phrase repeated immediately in a consecutive loop.
     for size in (3, 4, 5, 6):
-        if len(words) < size * 4:
+        if len(words) < size * 3:
             continue
-        grams = [" ".join(words[i:i + size]) for i in range(len(words) - size + 1)]
-        counts = {}
-        for gram in grams:
-            counts[gram] = counts.get(gram, 0) + 1
-        if any(count >= 5 for count in counts.values()):
-            errors.append(f"repeated {size}-word phrase loop detected")
+        run = 1
+        for i in range(size, len(words) - size + 1):
+            previous = words[i - size:i]
+            current = words[i:i + size]
+            if current == previous:
+                run += 1
+                if run >= 3:
+                    errors.append(f"consecutive repeated {size}-word phrase loop detected")
+                    break
+            else:
+                run = 1
+        if errors and errors[-1].endswith("phrase loop detected"):
             break
     return errors
 
