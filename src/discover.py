@@ -168,15 +168,20 @@ def discover(output_path):
     session = requests.Session()
     session.headers.update(headers)
 
+    # Prefer the legacy official video archives first. The last successful
+    # end-to-end build used these per-video official pages; the newer Digital
+    # Parliament meeting archive often links to YouTube for recordings, which
+    # GitHub-hosted runners may block with bot verification. Digital Parliament
+    # remains a fallback if either legacy House archive is unavailable.
     try:
-        collections = discover_digital(session, headers)
-        platform = "digital_parliament"
-        print(f"Using official Digital Parliament archive: {len(collections)} meeting pages.")
-    except (requests.RequestException, RuntimeError) as exc:
-        print(f"WARNING: Digital Parliament discovery unavailable: {exc}", file=sys.stderr)
         collections = discover_legacy(session, headers)
         platform = "legacy_parliament"
         print(f"Using legacy official archives: {len(collections)} collections.")
+    except (requests.RequestException, RuntimeError) as legacy_exc:
+        print(f"WARNING: Legacy official archives unavailable: {legacy_exc}", file=sys.stderr)
+        collections = discover_digital(session, headers)
+        platform = "digital_parliament"
+        print(f"Using official Digital Parliament archive: {len(collections)} meeting pages.")
 
     result = {
         "sources": LEGACY_SOURCES,
