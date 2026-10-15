@@ -404,7 +404,12 @@ def main(selection_path, masters_dir, thumbnails_dir, subtitles_dir):
         raise SystemExit(1)
 
     report = {
-        "status": "passed",
+        # "passed" refers only to technical/structural checks below. It does
+        # not certify that Whisper's English translation preserves Nepali meaning.
+        "status": "technical_checks_passed_human_review_required",
+        "technical_checks_passed": True,
+        "subtitle_semantic_review_required": True,
+        "publication_ready": False,
         "long_count": len(longs),
         "short_count": len(shorts),
         "unique_long_speakers": len(long_speakers),
@@ -416,7 +421,7 @@ def main(selection_path, masters_dir, thumbnails_dir, subtitles_dir):
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     print("")
-    print("QUALITY CONTROL PASSED")
+    print("TECHNICAL QC PASSED; HUMAN SUBTITLE MEANING REVIEW STILL REQUIRED")
     print(json.dumps(report, indent=2))
 
 
