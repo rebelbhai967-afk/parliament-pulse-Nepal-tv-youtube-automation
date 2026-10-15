@@ -13,7 +13,9 @@ def main(selection_path, gate_report_path, output_path):
 
     for kind in ("long", "short"):
         for index, story in enumerate(selection.get(f"{kind}_stories", []), 1):
-            reasons = []
+            reasons = [
+                "english_subtitle_meaning_requires_human_review"
+            ]
             hook = story.get("opening_hook") or {}
             if not hook.get("text"):
                 reasons.append("missing_hook")
@@ -30,13 +32,18 @@ def main(selection_path, gate_report_path, output_path):
                 "kind": kind,
                 "index": index,
                 "content_id": f"PPN-{kind.upper()}-{index:02d}",
-                "status": "REVIEW_REQUIRED" if reasons else "AUTO_SAFE_FOR_QC",
+                # Automated language/format checks cannot establish that a
+                # translated parliamentary statement preserves its meaning.
+                # Never label generated subtitles publication-safe without review.
+                "status": "REVIEW_REQUIRED",
                 "reasons": sorted(set(reasons)),
             })
 
     report = {
         "policy": "No item is published automatically from this review queue.",
         "manual_review_required_before_publication": True,
+        "subtitle_semantic_review_required_for_every_item": True,
+        "automated_checks_do_not_certify_translation_accuracy": True,
         "items": rows,
     }
     Path(output_path).write_text(
